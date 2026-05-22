@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MLOps4RT-Edge Comparison Report</title>
+  <style>
+    :root {
+      --ink: #1f2933; --muted: #687789; --line: #d8e0e8; --paper: #ffffff; --bg: #f5f7fa;
+      --ts: #e8f1fb; --ts-border: #8eb6df; --events: #e8f6ee; --events-border: #8ac6a3;
+      --uniEvents: #fff1e3; --uniEvents-border: #e3aa6f;
+    }
+    body { margin: 0; font-family: Arial, sans-serif; color: var(--ink); background: var(--bg); }
+    header { padding: 28px 34px; background: #ffffff; border-bottom: 1px solid var(--line); }
+    h1 { margin: 0 0 6px; font-size: 28px; }
+    h2, h3, h4, h5 { color: #102a43; }
+    .muted { color: var(--muted); }
+    main { padding: 24px 34px 42px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 18px; }
+    .stat, .mini-stat { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+    .stat span, .mini-stat span { color: var(--muted); display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .stat strong, .mini-stat strong { display: block; font-size: 25px; margin-top: 5px; }
+    .mini-stat.ts { background: var(--ts); border-color: var(--ts-border); }
+    .mini-stat.events { background: var(--events); border-color: var(--events-border); }
+    .mini-stat.uniEvents { background: var(--uniEvents); border-color: var(--uniEvents-border); }
+    .rankings { margin-top: 24px; }
+    .ranking { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 16px; overflow-x: auto; }
+    .comparison-block { margin-top: 26px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px; box-shadow: 0 8px 22px rgba(20, 45, 70, .06); }
+    .block-title h2 { margin: 0; font-size: 21px; }
+    .block-title h2 span { margin-left: 8px; color: var(--muted); font-weight: 600; }
+    .block-title p { margin: 8px 0 0; color: var(--muted); }
+    .pipeline-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+    .pipeline-column { border-radius: 9px; border: 1px solid var(--line); padding: 12px; min-height: 160px; }
+    .pipeline-column.ts { background: var(--ts); border-color: var(--ts-border); }
+    .pipeline-column.events { background: var(--events); border-color: var(--events-border); }
+    .pipeline-column.uniEvents { background: var(--uniEvents); border-color: var(--uniEvents-border); }
+    .column-title { font-weight: 700; margin-bottom: 10px; }
+    .model-card { background: rgba(255,255,255,.88); border: 1px solid rgba(30,60,90,.14); border-radius: 8px; padding: 12px; margin-bottom: 12px; box-shadow: 0 4px 12px rgba(20, 45, 70, .08); }
+    .card-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+    .card-head h5 { margin: 0; font-size: 15px; }
+    .card-head p, .bands { margin: 4px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .status, .badge { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 3px 8px; font-size: 11px; white-space: nowrap; }
+    .badge.best { display: inline-block; margin: 9px 0; background: #fff7cc; border-color: #e2c044; font-weight: 700; }
+    .main-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+    .metric { background: #fff; border: 1px solid var(--line); border-radius: 7px; padding: 9px; }
+    .metric span { display: block; color: var(--muted); font-size: 11px; }
+    .metric strong { display: block; font-size: 18px; margin-top: 3px; }
+    .kv-grid, .trace { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; font-size: 12px; }
+    .kv-grid span, .trace span { display: block; color: var(--muted); }
+    .kv-grid strong, .trace strong { overflow-wrap: anywhere; }
+    details { margin-top: 10px; }
+    summary { cursor: pointer; color: #334e68; font-weight: 700; font-size: 12px; }
+    .empty { background: rgba(255,255,255,.7); border: 1px dashed rgba(30,60,90,.25); color: var(--muted); border-radius: 8px; padding: 24px 12px; text-align: center; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; background: #fff; }
+    th, td { border: 1px solid var(--line); padding: 7px; text-align: left; vertical-align: top; }
+    th { background: #eef2f7; }
+    .path { font-family: Consolas, monospace; overflow-wrap: anywhere; }
+    @media (max-width: 1050px) { .pipeline-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>MLOps4RT-Edge Comparison Report</h1>
+    <p class="muted">Generated at 2026-05-22T11:09:40 from registry/model_index.yaml</p>
+    <div class="summary-grid">
+      <div class="stat"><span>Total models</span><strong>8</strong></div>
+      <div class="stat"><span>Measures</span><strong>1</strong></div>
+      <div class="stat"><span>Target groups</span><strong>2</strong></div>
+      <div class="mini-stat ts"><span>TS</span><strong>2</strong></div><div class="mini-stat events"><span>Events</span><strong>3</strong></div><div class="mini-stat uniEvents"><span>UniEvents</span><strong>3</strong></div>
+    </div>
+  </header>
+  <main>
+    <section class="rankings">
+      <h2>Global Rankings</h2>
+      <div class="ranking"><h3>Top 10 by test_f1</h3><table><thead><tr><th>measure</th><th>direction</th><th>effective_threshold</th><th>temporal_config_id</th><th>pipeline</th><th>bands_id</th><th>f05_variant</th><th>test_precision</th><th>test_recall</th><th>test_f1</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">coarse_10</td><td class="">v5_0407</td><td class="">0.998205</td><td class="">1</td><td class="">0.999102</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_006/outputs/events/5973f6a25525</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">dense_mid</td><td class="">v5_0406</td><td class="">0.978873</td><td class="">1</td><td class="">0.989324</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/events/92868bac5f50</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">fine_4</td><td class="">v5_0000</td><td class="">0.977866</td><td class="">0.9896</td><td class="">0.983698</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_002/outputs/events/fb0d1aac2a53</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">ts</td><td class="">no_bands</td><td class="">v5_0001</td><td class="">0.942244</td><td class="">0.925446</td><td class="">0.933769</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_002/outputs/ts/addfecf76d1d</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">ts</td><td class="">no_bands</td><td class="">v5_0002</td><td class="">0.855491</td><td class="">0.831461</td><td class="">0.843305</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/ts/fa65c5610ff1</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">coarse_10</td><td class="">v5_0002</td><td class="">0.936396</td><td class="">0.752841</td><td class="">0.834646</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_006/outputs/uniEvents/cca3f2cef8ce</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">fine_4</td><td class="">v5_0000</td><td class="">0.742276</td><td class="">0.792535</td><td class="">0.766583</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_004/outputs/uniEvents/cd751a4c53b8</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">dense_mid</td><td class="">v5_0001</td><td class="">0.847059</td><td class="">0.613636</td><td class="">0.711697</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/uniEvents/a04ba5c9f7be</td></tr></tbody></table></div>
+<div class="ranking"><h3>Top 10 by test_recall</h3><table><thead><tr><th>measure</th><th>direction</th><th>effective_threshold</th><th>temporal_config_id</th><th>pipeline</th><th>bands_id</th><th>f05_variant</th><th>test_precision</th><th>test_recall</th><th>test_f1</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">coarse_10</td><td class="">v5_0407</td><td class="">0.998205</td><td class="">1</td><td class="">0.999102</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_006/outputs/events/5973f6a25525</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">dense_mid</td><td class="">v5_0406</td><td class="">0.978873</td><td class="">1</td><td class="">0.989324</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/events/92868bac5f50</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">fine_4</td><td class="">v5_0000</td><td class="">0.977866</td><td class="">0.9896</td><td class="">0.983698</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_002/outputs/events/fb0d1aac2a53</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">ts</td><td class="">no_bands</td><td class="">v5_0001</td><td class="">0.942244</td><td class="">0.925446</td><td class="">0.933769</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_002/outputs/ts/addfecf76d1d</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">ts</td><td class="">no_bands</td><td class="">v5_0002</td><td class="">0.855491</td><td class="">0.831461</td><td class="">0.843305</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/ts/fa65c5610ff1</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">fine_4</td><td class="">v5_0000</td><td class="">0.742276</td><td class="">0.792535</td><td class="">0.766583</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_004/outputs/uniEvents/cd751a4c53b8</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">coarse_10</td><td class="">v5_0002</td><td class="">0.936396</td><td class="">0.752841</td><td class="">0.834646</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_006/outputs/uniEvents/cca3f2cef8ce</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">dense_mid</td><td class="">v5_0001</td><td class="">0.847059</td><td class="">0.613636</td><td class="">0.711697</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/uniEvents/a04ba5c9f7be</td></tr></tbody></table></div>
+<div class="ranking"><h3>Top 10 by test_precision</h3><table><thead><tr><th>measure</th><th>direction</th><th>effective_threshold</th><th>temporal_config_id</th><th>pipeline</th><th>bands_id</th><th>f05_variant</th><th>test_precision</th><th>test_recall</th><th>test_f1</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">coarse_10</td><td class="">v5_0407</td><td class="">0.998205</td><td class="">1</td><td class="">0.999102</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_006/outputs/events/5973f6a25525</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">dense_mid</td><td class="">v5_0406</td><td class="">0.978873</td><td class="">1</td><td class="">0.989324</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/events/92868bac5f50</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">fine_4</td><td class="">v5_0000</td><td class="">0.977866</td><td class="">0.9896</td><td class="">0.983698</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_002/outputs/events/fb0d1aac2a53</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">ts</td><td class="">no_bands</td><td class="">v5_0001</td><td class="">0.942244</td><td class="">0.925446</td><td class="">0.933769</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_002/outputs/ts/addfecf76d1d</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">coarse_10</td><td class="">v5_0002</td><td class="">0.936396</td><td class="">0.752841</td><td class="">0.834646</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_006/outputs/uniEvents/cca3f2cef8ce</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">ts</td><td class="">no_bands</td><td class="">v5_0002</td><td class="">0.855491</td><td class="">0.831461</td><td class="">0.843305</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/ts/fa65c5610ff1</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">dense_mid</td><td class="">v5_0001</td><td class="">0.847059</td><td class="">0.613636</td><td class="">0.711697</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/uniEvents/a04ba5c9f7be</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">fine_4</td><td class="">v5_0000</td><td class="">0.742276</td><td class="">0.792535</td><td class="">0.766583</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_004/outputs/uniEvents/cd751a4c53b8</td></tr></tbody></table></div>
+    </section>
+    <section>
+      <h2>Comparison Blocks</h2>
+      
+<section class="comparison-block">
+  <div class="block-title">
+    <div>
+      <h2>Battery_Active_Power <span>high</span> <span>threshold 80</span></h2>
+      <p>Temporal config: OW=600, PW=100, LT=10, strategy=synchro</p>
+    </div>
+  </div>
+  <div class="pipeline-grid">
+    
+<div class="pipeline-column ts">
+  <div class="column-title">TS</div>
+  
+<article class="model-card ts">
+  <div class="card-head">
+    <div>
+      <h5>TS</h5>
+      <p>no_bands · v5_0001</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.933769</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.925446</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.942244</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>best_val_recall</span><strong>0.942464</strong></div><div><span>decision_threshold</span><strong>0.441253</strong></div><div><span>positive_ratio_train</span><strong>0.291477</strong></div><div><span>n_train</span><strong>19758</strong></div><div><span>n_val</span><strong>4234</strong></div><div><span>n_test</span><strong>4235</strong></div><div><span>tp</span><strong>1142</strong></div><div><span>fp</span><strong>70</strong></div><div><span>tn</span><strong>2931</strong></div><div><span>fn</span><strong>92</strong></div><div><span>execution_time</span><strong>472.958</strong></div>
+  </div>
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>addfecf76d1d</strong></div><div><span>run_id</span><strong>2026-05-21_002</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_002/outputs/ts/addfecf76d1d</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f05_modeling/v5_0001</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+<div class="pipeline-column events">
+  <div class="column-title">Events</div>
+  
+<article class="model-card events">
+  <div class="card-head">
+    <div>
+      <h5>Events</h5>
+      <p>fine_4 · v5_0000</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  <span class="badge best">Best F1 in block</span>
+  <p class="bands">bands: [20, 40, 60, 80]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.983698</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.9896</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.977866</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>best_val_recall</span><strong>0.992</strong></div><div><span>decision_threshold</span><strong>0.855761</strong></div><div><span>positive_ratio_train</span><strong>0.294156</strong></div><div><span>n_train</span><strong>19833</strong></div><div><span>n_val</span><strong>4250</strong></div><div><span>n_test</span><strong>4251</strong></div><div><span>tp</span><strong>1237</strong></div><div><span>fp</span><strong>28</strong></div><div><span>tn</span><strong>2973</strong></div><div><span>fn</span><strong>13</strong></div><div><span>execution_time</span><strong>596.041</strong></div>
+  </div>
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>fb0d1aac2a53</strong></div><div><span>run_id</span><strong>2026-05-21_002</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_002/outputs/events/fb0d1aac2a53</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f05_modeling/v5_0000</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+<div class="pipeline-column uniEvents">
+  <div class="column-title">UniEvents</div>
+  
+<article class="model-card uniEvents">
+  <div class="card-head">
+    <div>
+      <h5>UniEvents</h5>
+      <p>fine_4 · v5_0000</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  <p class="bands">bands: [20, 40, 60, 80]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.766583</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.792535</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.742276</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>best_val_recall</span><strong>0.761285</strong></div><div><span>decision_threshold</span><strong>0.51136</strong></div><div><span>positive_ratio_train</span><strong>0.277382</strong></div><div><span>n_train</span><strong>19374</strong></div><div><span>n_val</span><strong>4152</strong></div><div><span>n_test</span><strong>4152</strong></div><div><span>tp</span><strong>913</strong></div><div><span>fp</span><strong>317</strong></div><div><span>tn</span><strong>2683</strong></div><div><span>fn</span><strong>239</strong></div><div><span>execution_time</span><strong>132.105</strong></div>
+  </div>
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>cd751a4c53b8</strong></div><div><span>run_id</span><strong>2026-05-21_004</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_004/outputs/uniEvents/cd751a4c53b8</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f05_modeling/v5_0000</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+  </div>
+  <h3>Compact Comparison Table</h3>
+  <table><thead><tr><th>pipeline</th><th>bands_id</th><th>f05_variant</th><th>test_precision</th><th>test_recall</th><th>test_f1</th><th>best_val_recall</th><th>positive_ratio_train</th><th>n_train</th><th>n_val</th><th>n_test</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">ts</td><td class="">no_bands</td><td class="">v5_0001</td><td class="">0.942244</td><td class="">0.925446</td><td class="">0.933769</td><td class="">0.942464</td><td class="">0.291477</td><td class="">19758</td><td class="">4234</td><td class="">4235</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_002/outputs/ts/addfecf76d1d</td></tr><tr><td class="">events</td><td class="">fine_4</td><td class="">v5_0000</td><td class="">0.977866</td><td class="">0.9896</td><td class="">0.983698</td><td class="">0.992</td><td class="">0.294156</td><td class="">19833</td><td class="">4250</td><td class="">4251</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_002/outputs/events/fb0d1aac2a53</td></tr><tr><td class="">uniEvents</td><td class="">fine_4</td><td class="">v5_0000</td><td class="">0.742276</td><td class="">0.792535</td><td class="">0.766583</td><td class="">0.761285</td><td class="">0.277382</td><td class="">19374</td><td class="">4152</td><td class="">4152</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_004/outputs/uniEvents/cd751a4c53b8</td></tr></tbody></table>
+</section>
+
+
+<section class="comparison-block">
+  <div class="block-title">
+    <div>
+      <h2>Battery_Active_Power <span>high</span> <span>threshold 90</span></h2>
+      <p>Temporal config: OW=600, PW=100, LT=10, strategy=synchro</p>
+    </div>
+  </div>
+  <div class="pipeline-grid">
+    
+<div class="pipeline-column ts">
+  <div class="column-title">TS</div>
+  
+<article class="model-card ts">
+  <div class="card-head">
+    <div>
+      <h5>TS</h5>
+      <p>no_bands · v5_0002</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.843305</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.831461</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.855491</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>best_val_recall</span><strong>0.797753</strong></div><div><span>decision_threshold</span><strong>0.331196</strong></div><div><span>positive_ratio_train</span><strong>0.105945</strong></div><div><span>n_train</span><strong>15659</strong></div><div><span>n_val</span><strong>3356</strong></div><div><span>n_test</span><strong>3356</strong></div><div><span>tp</span><strong>296</strong></div><div><span>fp</span><strong>50</strong></div><div><span>tn</span><strong>2950</strong></div><div><span>fn</span><strong>60</strong></div><div><span>execution_time</span><strong>281.655</strong></div>
+  </div>
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>fa65c5610ff1</strong></div><div><span>run_id</span><strong>2026-05-21_005</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/ts/fa65c5610ff1</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f05_modeling/v5_0002</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+<div class="pipeline-column events">
+  <div class="column-title">Events</div>
+  
+<article class="model-card events">
+  <div class="card-head">
+    <div>
+      <h5>Events</h5>
+      <p>coarse_10 · v5_0407</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  <span class="badge best">Best F1 in block</span>
+  <p class="bands">bands: [10, 20, 30, 40, 50, 60, 70, 80, 90]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.999102</strong></div>
+    <div class="metric"><span>Recall</span><strong>1</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.998205</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>best_val_recall</span><strong>1</strong></div><div><span>decision_threshold</span><strong>0.960183</strong></div><div><span>positive_ratio_train</span><strong>0.156229</strong></div><div><span>n_train</span><strong>16591</strong></div><div><span>n_val</span><strong>3556</strong></div><div><span>n_test</span><strong>3556</strong></div><div><span>tp</span><strong>556</strong></div><div><span>fp</span><strong>1</strong></div><div><span>tn</span><strong>2999</strong></div><div><span>fn</span><strong>0</strong></div><div><span>execution_time</span><strong>806.977</strong></div>
+  </div>
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>5973f6a25525</strong></div><div><span>run_id</span><strong>2026-05-21_006</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_006/outputs/events/5973f6a25525</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f05_modeling/v5_0407</strong></div>
+    </div>
+  </details>
+</article>
+
+<article class="model-card events">
+  <div class="card-head">
+    <div>
+      <h5>Events</h5>
+      <p>dense_mid · v5_0406</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  <p class="bands">bands: [10, 25, 50, 75, 90]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.989324</strong></div>
+    <div class="metric"><span>Recall</span><strong>1</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.978873</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>best_val_recall</span><strong>0.998198</strong></div><div><span>decision_threshold</span><strong>0.74105</strong></div><div><span>positive_ratio_train</span><strong>0.156229</strong></div><div><span>n_train</span><strong>16591</strong></div><div><span>n_val</span><strong>3556</strong></div><div><span>n_test</span><strong>3556</strong></div><div><span>tp</span><strong>556</strong></div><div><span>fp</span><strong>12</strong></div><div><span>tn</span><strong>2988</strong></div><div><span>fn</span><strong>0</strong></div><div><span>execution_time</span><strong>430.895</strong></div>
+  </div>
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>92868bac5f50</strong></div><div><span>run_id</span><strong>2026-05-21_005</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/events/92868bac5f50</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f05_modeling/v5_0406</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+<div class="pipeline-column uniEvents">
+  <div class="column-title">UniEvents</div>
+  
+<article class="model-card uniEvents">
+  <div class="card-head">
+    <div>
+      <h5>UniEvents</h5>
+      <p>coarse_10 · v5_0002</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  <p class="bands">bands: [10, 20, 30, 40, 50, 60, 70, 80, 90]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.834646</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.752841</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.936396</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>best_val_recall</span><strong>0.767045</strong></div><div><span>decision_threshold</span><strong>0.663139</strong></div><div><span>positive_ratio_train</span><strong>0.104974</strong></div><div><span>n_train</span><strong>15642</strong></div><div><span>n_val</span><strong>3352</strong></div><div><span>n_test</span><strong>3352</strong></div><div><span>tp</span><strong>265</strong></div><div><span>fp</span><strong>18</strong></div><div><span>tn</span><strong>2982</strong></div><div><span>fn</span><strong>87</strong></div><div><span>execution_time</span><strong>135.579</strong></div>
+  </div>
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>cca3f2cef8ce</strong></div><div><span>run_id</span><strong>2026-05-21_006</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_006/outputs/uniEvents/cca3f2cef8ce</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f05_modeling/v5_0002</strong></div>
+    </div>
+  </details>
+</article>
+
+<article class="model-card uniEvents">
+  <div class="card-head">
+    <div>
+      <h5>UniEvents</h5>
+      <p>dense_mid · v5_0001</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  <p class="bands">bands: [10, 25, 50, 75, 90]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.711697</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.613636</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.847059</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>best_val_recall</span><strong>0.599432</strong></div><div><span>decision_threshold</span><strong>0.677636</strong></div><div><span>positive_ratio_train</span><strong>0.104974</strong></div><div><span>n_train</span><strong>15642</strong></div><div><span>n_val</span><strong>3352</strong></div><div><span>n_test</span><strong>3352</strong></div><div><span>tp</span><strong>216</strong></div><div><span>fp</span><strong>39</strong></div><div><span>tn</span><strong>2961</strong></div><div><span>fn</span><strong>136</strong></div><div><span>execution_time</span><strong>76.6349</strong></div>
+  </div>
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>a04ba5c9f7be</strong></div><div><span>run_id</span><strong>2026-05-21_005</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/uniEvents/a04ba5c9f7be</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f05_modeling/v5_0001</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+  </div>
+  <h3>Compact Comparison Table</h3>
+  <table><thead><tr><th>pipeline</th><th>bands_id</th><th>f05_variant</th><th>test_precision</th><th>test_recall</th><th>test_f1</th><th>best_val_recall</th><th>positive_ratio_train</th><th>n_train</th><th>n_val</th><th>n_test</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">ts</td><td class="">no_bands</td><td class="">v5_0002</td><td class="">0.855491</td><td class="">0.831461</td><td class="">0.843305</td><td class="">0.797753</td><td class="">0.105945</td><td class="">15659</td><td class="">3356</td><td class="">3356</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/ts/fa65c5610ff1</td></tr><tr><td class="">events</td><td class="">coarse_10</td><td class="">v5_0407</td><td class="">0.998205</td><td class="">1</td><td class="">0.999102</td><td class="">1</td><td class="">0.156229</td><td class="">16591</td><td class="">3556</td><td class="">3556</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_006/outputs/events/5973f6a25525</td></tr><tr><td class="">events</td><td class="">dense_mid</td><td class="">v5_0406</td><td class="">0.978873</td><td class="">1</td><td class="">0.989324</td><td class="">0.998198</td><td class="">0.156229</td><td class="">16591</td><td class="">3556</td><td class="">3556</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/events/92868bac5f50</td></tr><tr><td class="">uniEvents</td><td class="">coarse_10</td><td class="">v5_0002</td><td class="">0.936396</td><td class="">0.752841</td><td class="">0.834646</td><td class="">0.767045</td><td class="">0.104974</td><td class="">15642</td><td class="">3352</td><td class="">3352</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_006/outputs/uniEvents/cca3f2cef8ce</td></tr><tr><td class="">uniEvents</td><td class="">dense_mid</td><td class="">v5_0001</td><td class="">0.847059</td><td class="">0.613636</td><td class="">0.711697</td><td class="">0.599432</td><td class="">0.104974</td><td class="">15642</td><td class="">3352</td><td class="">3352</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/uniEvents/a04ba5c9f7be</td></tr></tbody></table>
+</section>
+
+    </section>
+  </main>
+</body>
+</html>

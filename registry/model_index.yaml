@@ -1,0 +1,269 @@
+generated_at: '2026-05-21T19:40:22'
+source_manifests:
+- runs/2026-05-21_001/manifest.csv
+- runs/2026-05-21_002/manifest.csv
+- runs/2026-05-21_003/manifest.csv
+- runs/2026-05-21_004/manifest.csv
+- runs/2026-05-21_005/manifest.csv
+- runs/2026-05-21_006/manifest.csv
+summary:
+  n_models: 8
+  n_measures: 1
+  n_target_groups: 2
+  pipelines:
+    events: 3
+    ts: 2
+    uniEvents: 3
+models_by_measure:
+  Battery_Active_Power:
+    high:
+      threshold_80:
+        target_group: Battery_Active_Power_high_80
+        temporal_configs:
+          OW600_PW100_LT10_synchro:
+            OW: 600
+            PW: 100
+            LT: 10
+            window_strategy: synchro
+            nan_mode: discard
+            pipelines:
+              events:
+                bands_fine_4:
+                  bands_id: fine_4
+                  bands:
+                  - 20
+                  - 40
+                  - 60
+                  - 80
+                  model_key: events|Battery_Active_Power|high|thr80|bands_fine_4|OW600_PW100_LT10_synchro|cnn1d|seed42
+                  run_id: 2026-05-21_002
+                  job_key: fb0d1aac2a53
+                  status: COMPLETED
+                  repo_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedge
+                  local_output_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_002/outputs/events/fb0d1aac2a53
+                  variants:
+                    f02: v2_0000
+                    f03: v3_0000
+                    f04: v4_0000
+                    f05: v5_0000
+                  variant_paths:
+                    f02: C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f02_events/v2_0000
+                    f03: C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f03_windows/v3_0000
+                    f04: C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f04_targets/v4_0000
+                    f05: C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f05_modeling/v5_0000
+                  model:
+                    model_family: cnn1d
+                    seed: 42
+                    imbalance_strategy: rare_events
+                    imbalance_max_maj: 20000
+              ts:
+                no_bands:
+                  model_key: ts|Battery_Active_Power|high|thr80|OW600_PW100_LT10_synchro|cnn1d|seed42
+                  run_id: 2026-05-21_002
+                  job_key: addfecf76d1d
+                  status: COMPLETED
+                  repo_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS
+                  local_output_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_002/outputs/ts/addfecf76d1d
+                  variants:
+                    f02: v2_0002
+                    f03: v3_0002
+                    f04: v4_0001
+                    f05: v5_0001
+                  variant_paths:
+                    f02: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f02_events/v2_0002
+                    f03: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f03_windows/v3_0002
+                    f04: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f04_targets/v4_0001
+                    f05: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f05_modeling/v5_0001
+                  model:
+                    model_family: cnn1d
+                    seed: 42
+                    imbalance_strategy: rare_events
+                    imbalance_max_maj: 20000
+              uniEvents:
+                bands_fine_4:
+                  bands_id: fine_4
+                  bands:
+                  - 20
+                  - 40
+                  - 60
+                  - 80
+                  model_key: uniEvents|Battery_Active_Power|high|thr80|bands_fine_4|OW600_PW100_LT10_synchro|cnn1d|seed42
+                  run_id: 2026-05-21_004
+                  job_key: cd751a4c53b8
+                  status: COMPLETED
+                  repo_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni
+                  local_output_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_004/outputs/uniEvents/cd751a4c53b8
+                  variants:
+                    f02: v2_0000
+                    f03: v3_0000
+                    f04: v4_0000
+                    f05: v5_0000
+                  variant_paths:
+                    f02: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f02_events/v2_0000
+                    f03: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f03_windows/v3_0000
+                    f04: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f04_targets/v4_0000
+                    f05: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f05_modeling/v5_0000
+                  model:
+                    model_family: cnn1d
+                    seed: 42
+                    imbalance_strategy: rare_events
+                    imbalance_max_maj: 20000
+      threshold_90:
+        target_group: Battery_Active_Power_high_90
+        temporal_configs:
+          OW600_PW100_LT10_synchro:
+            OW: 600
+            PW: 100
+            LT: 10
+            window_strategy: synchro
+            nan_mode: discard
+            pipelines:
+              events:
+                bands_coarse_10:
+                  bands_id: coarse_10
+                  bands:
+                  - 10
+                  - 20
+                  - 30
+                  - 40
+                  - 50
+                  - 60
+                  - 70
+                  - 80
+                  - 90
+                  model_key: events|Battery_Active_Power|high|thr90|bands_coarse_10|OW600_PW100_LT10_synchro|cnn1d|seed42
+                  run_id: 2026-05-21_006
+                  job_key: 5973f6a25525
+                  status: COMPLETED
+                  repo_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedge
+                  local_output_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_006/outputs/events/5973f6a25525
+                  variants:
+                    f02: v2_0008
+                    f03: v3_0022
+                    f04: v4_0542
+                    f05: v5_0407
+                  variant_paths:
+                    f02: C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f02_events/v2_0008
+                    f03: C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f03_windows/v3_0022
+                    f04: C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f04_targets/v4_0542
+                    f05: C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f05_modeling/v5_0407
+                  model:
+                    model_family: cnn1d
+                    seed: 42
+                    imbalance_strategy: rare_events
+                    imbalance_max_maj: 20000
+                bands_dense_mid:
+                  bands_id: dense_mid
+                  bands:
+                  - 10
+                  - 25
+                  - 50
+                  - 75
+                  - 90
+                  model_key: events|Battery_Active_Power|high|thr90|bands_dense_mid|OW600_PW100_LT10_synchro|cnn1d|seed42
+                  run_id: 2026-05-21_005
+                  job_key: 92868bac5f50
+                  status: COMPLETED
+                  repo_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedge
+                  local_output_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/events/92868bac5f50
+                  variants:
+                    f02: v2_0007
+                    f03: v3_0021
+                    f04: v4_0541
+                    f05: v5_0406
+                  variant_paths:
+                    f02: C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f02_events/v2_0007
+                    f03: C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f03_windows/v3_0021
+                    f04: C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f04_targets/v4_0541
+                    f05: C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f05_modeling/v5_0406
+                  model:
+                    model_family: cnn1d
+                    seed: 42
+                    imbalance_strategy: rare_events
+                    imbalance_max_maj: 20000
+              ts:
+                no_bands:
+                  model_key: ts|Battery_Active_Power|high|thr90|OW600_PW100_LT10_synchro|cnn1d|seed42
+                  run_id: 2026-05-21_005
+                  job_key: fa65c5610ff1
+                  status: COMPLETED
+                  repo_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS
+                  local_output_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/ts/fa65c5610ff1
+                  variants:
+                    f02: v2_0003
+                    f03: v3_0003
+                    f04: v4_0002
+                    f05: v5_0002
+                  variant_paths:
+                    f02: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f02_events/v2_0003
+                    f03: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f03_windows/v3_0003
+                    f04: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f04_targets/v4_0002
+                    f05: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f05_modeling/v5_0002
+                  model:
+                    model_family: cnn1d
+                    seed: 42
+                    imbalance_strategy: rare_events
+                    imbalance_max_maj: 20000
+              uniEvents:
+                bands_coarse_10:
+                  bands_id: coarse_10
+                  bands:
+                  - 10
+                  - 20
+                  - 30
+                  - 40
+                  - 50
+                  - 60
+                  - 70
+                  - 80
+                  - 90
+                  model_key: uniEvents|Battery_Active_Power|high|thr90|bands_coarse_10|OW600_PW100_LT10_synchro|cnn1d|seed42
+                  run_id: 2026-05-21_006
+                  job_key: cca3f2cef8ce
+                  status: COMPLETED
+                  repo_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni
+                  local_output_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_006/outputs/uniEvents/cca3f2cef8ce
+                  variants:
+                    f02: v2_0002
+                    f03: v3_0002
+                    f04: v4_0002
+                    f05: v5_0002
+                  variant_paths:
+                    f02: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f02_events/v2_0002
+                    f03: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f03_windows/v3_0002
+                    f04: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f04_targets/v4_0002
+                    f05: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f05_modeling/v5_0002
+                  model:
+                    model_family: cnn1d
+                    seed: 42
+                    imbalance_strategy: rare_events
+                    imbalance_max_maj: 20000
+                bands_dense_mid:
+                  bands_id: dense_mid
+                  bands:
+                  - 10
+                  - 25
+                  - 50
+                  - 75
+                  - 90
+                  model_key: uniEvents|Battery_Active_Power|high|thr90|bands_dense_mid|OW600_PW100_LT10_synchro|cnn1d|seed42
+                  run_id: 2026-05-21_005
+                  job_key: a04ba5c9f7be
+                  status: COMPLETED
+                  repo_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni
+                  local_output_path: C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-21_005/outputs/uniEvents/a04ba5c9f7be
+                  variants:
+                    f02: v2_0001
+                    f03: v3_0001
+                    f04: v4_0001
+                    f05: v5_0001
+                  variant_paths:
+                    f02: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f02_events/v2_0001
+                    f03: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f03_windows/v3_0001
+                    f04: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f04_targets/v4_0001
+                    f05: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f05_modeling/v5_0001
+                  model:
+                    model_family: cnn1d
+                    seed: 42
+                    imbalance_strategy: rare_events
+                    imbalance_max_maj: 20000
