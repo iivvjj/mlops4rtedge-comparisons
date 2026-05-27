@@ -154,11 +154,12 @@ def build_model_key(row: dict[str, Any]) -> str:
     threshold = f"thr{compact_value(row.get('effective_threshold'))}"
     temporal = build_temporal_config_id(row)
     model_family = clean_key_part(row.get("model_family"), "")
+    deduplication_mode = clean_key_part(row.get("deduplication_mode") or "none")
     seed = f"seed{compact_value(row.get('seed'))}"
     parts = [pipeline, measure, direction, threshold]
     if pipeline != "ts":
         parts.append(build_bands_key(row))
-    parts.extend([temporal, model_family, seed])
+    parts.extend([temporal, model_family, f"dedup_{deduplication_mode}", seed])
     return "|".join(parts)
 
 
@@ -242,6 +243,19 @@ def row_to_model_entry(row: dict[str, Any], model_key: str) -> dict[str, Any]:
             "seed": parse_scalar(row.get("seed")),
             "imbalance_strategy": row.get("imbalance_strategy") or None,
             "imbalance_max_maj": parse_scalar(row.get("imbalance_max_maj")),
+            "deduplication_mode": row.get("deduplication_mode") or "none",
+        },
+        "phase_keys": {
+            "f02": row.get("f02_key") or None,
+            "f03": row.get("f03_key") or None,
+            "f04": row.get("f04_key") or None,
+            "f05": row.get("f05_key") or None,
+        },
+        "phase_reused": {
+            "f02": row.get("f02_reused") or None,
+            "f03": row.get("f03_reused") or None,
+            "f04": row.get("f04_reused") or None,
+            "f05": row.get("f05_reused") or None,
         },
     })
     return entry
@@ -289,7 +303,12 @@ def build_index(rows: list[dict[str, Any]], source_manifests: list[Path]) -> dic
             "pipelines": {},
         })
         pipeline_node = temporal_node["pipelines"].setdefault(pipeline, {})
-        pipeline_node[bands_key] = row_to_model_entry(row, model_key)
+        bands_node = pipeline_node.setdefault(bands_key, {
+            "bands_id": row.get("bands_id") or ("no_bands" if pipeline == "ts" else None),
+            "bands": parse_bands(row.get("bands")) if pipeline != "ts" else [],
+            "models": [],
+        })
+        bands_node.setdefault("models", []).append(row_to_model_entry(row, model_key))
 
     index["summary"] = {
         "n_models": len(latest_by_model_key),

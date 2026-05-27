@@ -15,17 +15,21 @@ base:
   event_strategy: transitions
   model_family: cnn1d
   imbalance_strategy: rare_events
+  # imbalance_strategy: auto
   imbalance_max_maj: 20000
   seed: 42
+
 
 grid:
   measures:
     - Battery_Active_Power
-    - PVPCS_Active_Power
+
+  deduplication_modes: 
+    - all
+    - none
 
   directions:
     - high
-
 
   temporal_configs:
     - id: ow600_lt10_pw100
@@ -40,8 +44,8 @@ grid:
       values: [10, 20, 30, 40, 50, 60, 70, 80, 90]
     - id: dense_mid
       values: [10, 25, 50, 75, 90]
-    - id: fine_4
-      values: [20, 40, 60, 80]
+    # - id: fine_4
+    #   values: [20, 40, 60, 80]
 
 pipelines:
   - ts

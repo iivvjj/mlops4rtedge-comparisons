@@ -19,6 +19,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "experiment.yaml"
 RUNS_DIR = REPO_ROOT / "runs"
+F56_GPU_FOR_SCRIPT5 = True
 
 PHASES = {
     "f02": ("f02_events", 2),
@@ -45,6 +46,7 @@ MANIFEST_COLUMNS = [
     "model_family",
     "imbalance_strategy",
     "imbalance_max_maj",
+    "deduplication_mode",
     "seed",
     "bands_id",
     "bands",
@@ -55,6 +57,14 @@ MANIFEST_COLUMNS = [
     "f03_variant",
     "f04_variant",
     "f05_variant",
+    "f02_key",
+    "f03_key",
+    "f04_key",
+    "f05_key",
+    "f02_reused",
+    "f03_reused",
+    "f04_reused",
+    "f05_reused",
     "started_at",
     "finished_at",
     "repo_path",
@@ -189,6 +199,145 @@ def build_job_key(job_identity: dict[str, Any]) -> str:
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
 
 
+def build_identity_key(identity: dict[str, Any]) -> str:
+    return build_job_key(identity)
+
+
+def field_value(source: dict[str, Any], key: str, default: Any = "") -> Any:
+    if key in source and source.get(key) not in (None, ""):
+        return source.get(key)
+    identity = source.get("identity") if isinstance(source.get("identity"), dict) else {}
+    if key in identity and identity.get(key) not in (None, ""):
+        return identity.get(key)
+    base = source.get("base") if isinstance(source.get("base"), dict) else {}
+    if key in base and base.get(key) not in (None, ""):
+        return base.get(key)
+    temporal = source.get("temporal") if isinstance(source.get("temporal"), dict) else {}
+    if key in temporal and temporal.get(key) not in (None, ""):
+        return temporal.get(key)
+    return default
+
+
+def normalized_repo_path(value: Any) -> str:
+    return str(Path(str(value)).resolve()) if value not in (None, "") else ""
+
+
+def parse_manifest_bands(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        try:
+            parsed = yaml.safe_load(text)
+        except yaml.YAMLError:
+            return [item.strip() for item in text.split(",") if item.strip()]
+    return parsed if isinstance(parsed, list) else []
+
+
+def job_bands(source: dict[str, Any]) -> list[Any]:
+    return parse_manifest_bands(source.get("bands"))
+
+
+def job_repo_path(source: dict[str, Any]) -> str:
+    return normalized_repo_path(source.get("repo_path", ""))
+
+
+def job_parent_f01(source: dict[str, Any]) -> Any:
+    return source.get("parent_f01") or field_value(source, "parent_f01", "")
+
+
+def job_deduplication_mode(source: dict[str, Any]) -> str:
+    return str(field_value(source, "deduplication_mode", "none") or "none")
+
+
+def build_f02_key(job: dict[str, Any]) -> str:
+    pipeline = str(field_value(job, "pipeline"))
+    identity: dict[str, Any] = {
+        "pipeline": pipeline,
+        "repo_path": job_repo_path(job),
+        "parent_f01": job_parent_f01(job),
+    }
+    if pipeline == "ts":
+        identity["measure"] = field_value(job, "measure")
+    elif pipeline == "events":
+        identity.update({
+            "event_strategy": field_value(job, "event_strategy"),
+            "bands_id": field_value(job, "bands_id"),
+            "bands": job_bands(job),
+            "nan_mode": field_value(job, "nan_mode"),
+        })
+    elif pipeline == "uniEvents":
+        identity.update({
+            "measure": field_value(job, "measure"),
+            "event_strategy": field_value(job, "event_strategy"),
+            "bands_id": field_value(job, "bands_id"),
+            "bands": job_bands(job),
+            "nan_mode": field_value(job, "nan_mode"),
+        })
+    return build_identity_key(identity)
+
+
+def build_f03_key(job: dict[str, Any], f02_key: str) -> str:
+    identity = {
+        "pipeline": field_value(job, "pipeline"),
+        "repo_path": job_repo_path(job),
+        "f02_key": f02_key,
+        "OW": int(field_value(job, "OW", 0)),
+        "PW": int(field_value(job, "PW", 0)),
+        "LT": int(field_value(job, "LT", 0)),
+        "window_strategy": field_value(job, "window_strategy"),
+        "nan_mode": field_value(job, "nan_mode"),
+    }
+    return build_identity_key(identity)
+
+
+def build_f04_key(job: dict[str, Any], f03_key: str) -> str:
+    pipeline = str(field_value(job, "pipeline"))
+    identity = {
+        "pipeline": pipeline,
+        "repo_path": job_repo_path(job),
+        "f03_key": f03_key,
+        "measure": field_value(job, "measure"),
+        "direction": field_value(job, "direction"),
+        "effective_threshold": field_value(job, "effective_threshold"),
+        "bands_id": "" if pipeline == "ts" else field_value(job, "bands_id"),
+        "bands": [] if pipeline == "ts" else job_bands(job),
+    }
+    target_events = field_value(job, "target_events", "")
+    if target_events not in (None, ""):
+        identity["target_events"] = target_events
+    return build_identity_key(identity)
+
+
+def build_f05_key(job: dict[str, Any], f04_key: str) -> str:
+    identity = {
+        "pipeline": field_value(job, "pipeline"),
+        "repo_path": job_repo_path(job),
+        "f04_key": f04_key,
+        "model_family": field_value(job, "model_family"),
+        "seed": field_value(job, "seed"),
+        "imbalance_strategy": field_value(job, "imbalance_strategy"),
+        "imbalance_max_maj": field_value(job, "imbalance_max_maj"),
+        "deduplication_mode": job_deduplication_mode(job),
+    }
+    training = field_value(job, "training", {}) or {}
+    if training:
+        identity["training"] = training
+    return build_identity_key(identity)
+
+
+def attach_phase_keys(job: dict[str, Any]) -> None:
+    f02_key = build_f02_key(job)
+    f03_key = build_f03_key(job, f02_key)
+    f04_key = build_f04_key(job, f03_key)
+    f05_key = build_f05_key(job, f04_key)
+    job.update({"f02_key": f02_key, "f03_key": f03_key, "f04_key": f04_key, "f05_key": f05_key})
+
+
 def get_temporal_configs(cfg: dict[str, Any]) -> list[dict[str, Any]]:
     grid = cfg.get("grid") or {}
     base = cfg.get("base") or {}
@@ -237,6 +386,8 @@ def expand_jobs(cfg: dict[str, Any]) -> list[dict[str, Any]]:
     grid = cfg["grid"]
     pipelines = set(cfg.get("pipelines") or [])
     temporal_configs = get_temporal_configs(cfg)
+    model_families = list(grid.get("model_families") or [base.get("model_family")])
+    deduplication_modes = list(grid.get("deduplication_modes") or [base.get("deduplication_mode", "none")])
     jobs: list[dict[str, Any]] = []
 
     for temporal in temporal_configs:
@@ -247,29 +398,32 @@ def expand_jobs(cfg: dict[str, Any]) -> list[dict[str, Any]]:
                     bands = list(band_set["values"])
                     effective_threshold = derive_effective_threshold(direction, bands)
 
-                    for pipeline in ["events", "uniEvents"]:
-                        if pipeline not in pipelines:
-                            continue
-                        identity = {
-                            "pipeline": pipeline,
-                            "measure": measure,
-                            "direction": direction,
-                            "temporal_id": temporal["id"],
-                            "bands_id": bands_id,
-                            "bands": bands,
-                            "effective_threshold": effective_threshold,
-                            "OW": temporal["OW"],
-                            "PW": temporal["PW"],
-                            "LT": temporal["LT"],
-                            "window_strategy": temporal["window_strategy"],
-                            "nan_mode": temporal["nan_mode"],
-                            "event_strategy": base["event_strategy"],
-                            "model_family": base["model_family"],
-                            "imbalance_strategy": base["imbalance_strategy"],
-                            "imbalance_max_maj": base["imbalance_max_maj"],
-                            "seed": base["seed"],
-                        }
-                        jobs.append(make_job(identity, cfg, bands_id, bands, temporal))
+                    for model_family in model_families:
+                        for deduplication_mode in deduplication_modes:
+                            for pipeline in ["events", "uniEvents"]:
+                                if pipeline not in pipelines:
+                                    continue
+                                identity = {
+                                    "pipeline": pipeline,
+                                    "measure": measure,
+                                    "direction": direction,
+                                    "temporal_id": temporal["id"],
+                                    "bands_id": bands_id,
+                                    "bands": bands,
+                                    "effective_threshold": effective_threshold,
+                                    "OW": temporal["OW"],
+                                    "PW": temporal["PW"],
+                                    "LT": temporal["LT"],
+                                    "window_strategy": temporal["window_strategy"],
+                                    "nan_mode": temporal["nan_mode"],
+                                    "event_strategy": base["event_strategy"],
+                                    "model_family": model_family,
+                                    "imbalance_strategy": base["imbalance_strategy"],
+                                    "imbalance_max_maj": base["imbalance_max_maj"],
+                                    "deduplication_mode": deduplication_mode,
+                                    "seed": base["seed"],
+                                }
+                                jobs.append(make_job(identity, cfg, bands_id, bands, temporal))
 
     # TS jobs are deduplicated by effective threshold within each temporal config.
     seen_ts: set[str] = set()
@@ -280,27 +434,30 @@ def expand_jobs(cfg: dict[str, Any]) -> list[dict[str, Any]]:
                     for band_set in grid["event_band_sets"]:
                         bands = list(band_set["values"])
                         effective_threshold = derive_effective_threshold(direction, bands)
-                        identity = {
-                            "pipeline": "ts",
-                            "measure": measure,
-                            "direction": direction,
-                            "temporal_id": temporal["id"],
-                            "effective_threshold": effective_threshold,
-                            "OW": temporal["OW"],
-                            "PW": temporal["PW"],
-                            "LT": temporal["LT"],
-                            "window_strategy": temporal["window_strategy"],
-                            "nan_mode": temporal["nan_mode"],
-                            "model_family": base["model_family"],
-                            "imbalance_strategy": base["imbalance_strategy"],
-                            "imbalance_max_maj": base["imbalance_max_maj"],
-                            "seed": base["seed"],
-                        }
-                        job_key = build_job_key(identity)
-                        if job_key in seen_ts:
-                            continue
-                        seen_ts.add(job_key)
-                        jobs.append(make_job(identity, cfg, "", [], temporal))
+                        for model_family in model_families:
+                            for deduplication_mode in deduplication_modes:
+                                identity = {
+                                    "pipeline": "ts",
+                                    "measure": measure,
+                                    "direction": direction,
+                                    "temporal_id": temporal["id"],
+                                    "effective_threshold": effective_threshold,
+                                    "OW": temporal["OW"],
+                                    "PW": temporal["PW"],
+                                    "LT": temporal["LT"],
+                                    "window_strategy": temporal["window_strategy"],
+                                    "nan_mode": temporal["nan_mode"],
+                                    "model_family": model_family,
+                                    "imbalance_strategy": base["imbalance_strategy"],
+                                    "imbalance_max_maj": base["imbalance_max_maj"],
+                                    "deduplication_mode": deduplication_mode,
+                                    "seed": base["seed"],
+                                }
+                                job_key = build_job_key(identity)
+                                if job_key in seen_ts:
+                                    continue
+                                seen_ts.add(job_key)
+                                jobs.append(make_job(identity, cfg, "", [], temporal))
 
     return jobs
 
@@ -326,8 +483,14 @@ def make_job(identity: dict[str, Any], cfg: dict[str, Any], bands_id: str, bands
         "bands_id": bands_id,
         "bands": bands,
         "effective_threshold": identity["effective_threshold"],
-        "base": cfg["base"],
+        "base": {
+            **cfg["base"],
+            "model_family": identity.get("model_family"),
+            "deduplication_mode": identity.get("deduplication_mode", "none"),
+        },
+        "deduplication_mode": identity.get("deduplication_mode", "none"),
     }
+    attach_phase_keys(job)
     return job
 
 
@@ -381,6 +544,88 @@ def load_job_attempts(runs_dir: Path = RUNS_DIR) -> tuple[set[str], dict[str, di
 def load_completed_jobs(runs_dir: Path = RUNS_DIR) -> set[str]:
     completed, _ = load_job_attempts(runs_dir)
     return completed
+
+
+def variant_dir_exists(repo_path: Path, phase: str, variant: str) -> bool:
+    if not variant:
+        return False
+    phase_name = PHASES[phase][0]
+    return (repo_path / "executions" / phase_name / variant).exists()
+
+
+def build_phase_cache(runs_dir: Path = RUNS_DIR) -> dict[str, dict[str, dict[str, Any]]]:
+    phase_cache: dict[str, dict[str, dict[str, Any]]] = {phase: {} for phase in PHASES}
+    for manifest in sorted(runs_dir.glob("*/manifest.csv")):
+        try:
+            with manifest.open("r", encoding="utf-8", newline="") as f:
+                for row in csv.DictReader(f):
+                    if row.get("status") != "COMPLETED":
+                        continue
+                    repo_text = str(row.get("repo_path", "")).strip()
+                    if not repo_text:
+                        continue
+                    repo_path = Path(repo_text)
+                    if not repo_path.exists():
+                        continue
+
+                    f02_key = row.get("f02_key") or build_f02_key(row)
+                    f03_key = row.get("f03_key") or build_f03_key(row, f02_key)
+                    f04_key = row.get("f04_key") or build_f04_key(row, f03_key)
+                    f05_key = row.get("f05_key") or build_f05_key(row, f04_key)
+                    keys = {"f02": f02_key, "f03": f03_key, "f04": f04_key, "f05": f05_key}
+
+                    for phase, key in keys.items():
+                        variant = str(row.get(f"{phase}_variant", "")).strip()
+                        if not key or not variant or not variant_dir_exists(repo_path, phase, variant):
+                            continue
+                        phase_cache[phase][key] = {
+                            "variant": variant,
+                            "repo_path": str(repo_path),
+                            "pipeline": row.get("pipeline", ""),
+                            "run_id": row.get("run_id", ""),
+                            "job_key": row.get("job_key", ""),
+                        }
+        except Exception as exc:
+            print(f"Warning: could not read manifest for phase cache {manifest}: {exc}")
+    return phase_cache
+
+
+def cache_completed_phase(
+    phase_cache: dict[str, dict[str, dict[str, Any]]],
+    phase: str,
+    key: str,
+    variant: str,
+    row: dict[str, Any],
+) -> None:
+    phase_cache.setdefault(phase, {})[key] = {
+        "variant": variant,
+        "repo_path": row.get("repo_path", ""),
+        "pipeline": row.get("pipeline", ""),
+        "run_id": row.get("run_id", ""),
+        "job_key": row.get("job_key", ""),
+    }
+
+
+def reusable_cached_variant(
+    job: dict[str, Any],
+    phase_cache: dict[str, dict[str, dict[str, Any]]],
+    phase: str,
+    log_path: Path,
+) -> str:
+    key = job.get(f"{phase}_key") or ""
+    cached = (phase_cache.get(phase) or {}).get(key)
+    if not cached:
+        return ""
+    variant = str(cached.get("variant", "")).strip()
+    repo_path = Path(str(cached.get("repo_path") or job["repo_path"]))
+    if variant and variant_dir_exists(repo_path, phase, variant):
+        with log_path.open("a", encoding="utf-8") as log:
+            log.write(
+                f"\n[REUSE] Reusing {phase.upper()} variant {variant} "
+                f"from run {cached.get('run_id')} job {cached.get('job_key')}\n"
+            )
+        return variant
+    return ""
 
 
 def create_run_dir(runs_dir: Path = RUNS_DIR) -> tuple[str, Path]:
@@ -445,6 +690,13 @@ def run_make(cwd: Path, log_path: Path, target: str, **kwargs: Any) -> None:
     run_command(command, cwd, log_path)
 
 
+def run_script5(cwd: Path, log_path: Path, variant: str) -> None:
+    kwargs: dict[str, Any] = {"VARIANT": variant}
+    if F56_GPU_FOR_SCRIPT5:
+        kwargs["F56_GPU"] = "true"
+    run_make(cwd, log_path, "script5", **kwargs)
+
+
 def log_retry(log_path: Path, message: str) -> None:
     with log_path.open("a", encoding="utf-8") as log:
         log.write(f"\n[RETRY] {message}\n")
@@ -507,6 +759,7 @@ def initial_manifest_row(run_id: str, run_dir: Path, job: dict[str, Any]) -> dic
         "model_family": job["base"].get("model_family", ""),
         "imbalance_strategy": job["base"].get("imbalance_strategy", ""),
         "imbalance_max_maj": job["base"].get("imbalance_max_maj", ""),
+        "deduplication_mode": job.get("deduplication_mode", "none"),
         "seed": job["base"].get("seed", ""),
         "bands_id": job["bands_id"],
         "bands": json_dumps_compact(job["bands"]) if job["bands"] else "",
@@ -517,6 +770,14 @@ def initial_manifest_row(run_id: str, run_dir: Path, job: dict[str, Any]) -> dic
         "f03_variant": "",
         "f04_variant": "",
         "f05_variant": "",
+        "f02_key": job.get("f02_key", ""),
+        "f03_key": job.get("f03_key", ""),
+        "f04_key": job.get("f04_key", ""),
+        "f05_key": job.get("f05_key", ""),
+        "f02_reused": False,
+        "f03_reused": False,
+        "f04_reused": False,
+        "f05_reused": False,
         "started_at": datetime.now().isoformat(timespec="seconds"),
         "finished_at": "",
         "repo_path": str(job["repo_path"]),
@@ -663,7 +924,21 @@ def copy_configured_outputs(row_or_job: dict[str, Any], outputs_config: dict[str
                     safe_copy_file(src, dst, log_path)
 
 
-def execute_ts_job(job: dict[str, Any], run_dir: Path, log_path: Path, row: dict[str, Any], manifest_path: Path, rows: list[dict[str, Any]]) -> None:
+def mark_phase(row: dict[str, Any], phase: str, variant: str, reused: bool, manifest_path: Path, rows: list[dict[str, Any]]) -> None:
+    row[f"{phase}_variant"] = variant
+    row[f"{phase}_reused"] = bool(reused)
+    append_or_update_manifest_row(manifest_path, rows, row)
+
+
+def execute_ts_job(
+    job: dict[str, Any],
+    run_dir: Path,
+    log_path: Path,
+    row: dict[str, Any],
+    manifest_path: Path,
+    rows: list[dict[str, Any]],
+    phase_cache: dict[str, dict[str, dict[str, Any]]],
+) -> None:
     repo = job["repo_path"]
     base = job["base"]
     temporal = job["temporal"]
@@ -673,21 +948,33 @@ def execute_ts_job(job: dict[str, Any], run_dir: Path, log_path: Path, row: dict
     name = safe_name(f"{measure}_{direction}_{compact_number(threshold)}")
 
     v2 = reusable_previous_variant(job, "f02", log_path)
-    if not v2:
-        v2 = next_free_variant(repo, "f02_events", 2)
-        row["f02_variant"] = v2
-        append_or_update_manifest_row(manifest_path, rows, row)
-        run_make(repo, log_path, "variant2", VARIANT=v2, PARENT=job["parent_f01"], MEASURE=measure)
+    if v2:
+        mark_phase(row, "f02", v2, False, manifest_path, rows)
+        run_make(repo, log_path, "script2", VARIANT=v2)
+        cache_completed_phase(phase_cache, "f02", job["f02_key"], v2, row)
     else:
-        row["f02_variant"] = v2
-        append_or_update_manifest_row(manifest_path, rows, row)
-    run_make(repo, log_path, "script2", VARIANT=v2)
+        v2 = reusable_cached_variant(job, phase_cache, "f02", log_path)
+    if v2 and row.get("f02_variant") != v2:
+        mark_phase(row, "f02", v2, True, manifest_path, rows)
+    elif not v2:
+        v2 = next_free_variant(repo, "f02_events", 2)
+        mark_phase(row, "f02", v2, False, manifest_path, rows)
+        run_make(repo, log_path, "variant2", VARIANT=v2, PARENT=job["parent_f01"], MEASURE=measure)
+        run_make(repo, log_path, "script2", VARIANT=v2)
+        cache_completed_phase(phase_cache, "f02", job["f02_key"], v2, row)
 
     v3 = reusable_previous_variant(job, "f03", log_path)
-    if not v3:
+    if v3:
+        mark_phase(row, "f03", v3, False, manifest_path, rows)
+        run_make(repo, log_path, "script3", VARIANT=v3)
+        cache_completed_phase(phase_cache, "f03", job["f03_key"], v3, row)
+    else:
+        v3 = reusable_cached_variant(job, phase_cache, "f03", log_path)
+    if v3 and row.get("f03_variant") != v3:
+        mark_phase(row, "f03", v3, True, manifest_path, rows)
+    elif not v3:
         v3 = next_free_variant(repo, "f03_windows", 3)
-        row["f03_variant"] = v3
-        append_or_update_manifest_row(manifest_path, rows, row)
+        mark_phase(row, "f03", v3, False, manifest_path, rows)
         run_make(
             repo,
             log_path,
@@ -700,16 +987,21 @@ def execute_ts_job(job: dict[str, Any], run_dir: Path, log_path: Path, row: dict
             STRATEGY=temporal["window_strategy"],
             NAN_MODE=temporal["nan_mode"],
         )
-    else:
-        row["f03_variant"] = v3
-        append_or_update_manifest_row(manifest_path, rows, row)
-    run_make(repo, log_path, "script3", VARIANT=v3)
+        run_make(repo, log_path, "script3", VARIANT=v3)
+        cache_completed_phase(phase_cache, "f03", job["f03_key"], v3, row)
 
     v4 = reusable_previous_variant(job, "f04", log_path)
-    if not v4:
+    if v4:
+        mark_phase(row, "f04", v4, False, manifest_path, rows)
+        run_make(repo, log_path, "script4", VARIANT=v4)
+        cache_completed_phase(phase_cache, "f04", job["f04_key"], v4, row)
+    else:
+        v4 = reusable_cached_variant(job, phase_cache, "f04", log_path)
+    if v4 and row.get("f04_variant") != v4:
+        mark_phase(row, "f04", v4, True, manifest_path, rows)
+    elif not v4:
         v4 = next_free_variant(repo, "f04_targets", 4)
-        row["f04_variant"] = v4
-        append_or_update_manifest_row(manifest_path, rows, row)
+        mark_phase(row, "f04", v4, False, manifest_path, rows)
         run_make(
             repo,
             log_path,
@@ -720,16 +1012,21 @@ def execute_ts_job(job: dict[str, Any], run_dir: Path, log_path: Path, row: dict
             DIRECTION=direction,
             NAME=name,
         )
-    else:
-        row["f04_variant"] = v4
-        append_or_update_manifest_row(manifest_path, rows, row)
-    run_make(repo, log_path, "script4", VARIANT=v4)
+        run_make(repo, log_path, "script4", VARIANT=v4)
+        cache_completed_phase(phase_cache, "f04", job["f04_key"], v4, row)
 
     v5 = reusable_previous_variant(job, "f05", log_path)
-    if not v5:
+    if v5:
+        mark_phase(row, "f05", v5, False, manifest_path, rows)
+        run_script5(repo, log_path, v5)
+        cache_completed_phase(phase_cache, "f05", job["f05_key"], v5, row)
+    else:
+        v5 = reusable_cached_variant(job, phase_cache, "f05", log_path)
+    if v5 and row.get("f05_variant") != v5:
+        mark_phase(row, "f05", v5, True, manifest_path, rows)
+    elif not v5:
         v5 = next_free_variant(repo, "f05_modeling", 5)
-        row["f05_variant"] = v5
-        append_or_update_manifest_row(manifest_path, rows, row)
+        mark_phase(row, "f05", v5, False, manifest_path, rows)
         run_make(
             repo,
             log_path,
@@ -739,12 +1036,11 @@ def execute_ts_job(job: dict[str, Any], run_dir: Path, log_path: Path, row: dict
             MODEL_FAMILY=base["model_family"],
             IMBALANCE_STRATEGY=base["imbalance_strategy"],
             IMBALANCE_MAX_MAJ=base["imbalance_max_maj"],
+            DEDUP_MODE=job.get("deduplication_mode", "none"),
             SEED=base["seed"],
         )
-    else:
-        row["f05_variant"] = v5
-        append_or_update_manifest_row(manifest_path, rows, row)
-    run_make(repo, log_path, "script5", VARIANT=v5)
+        run_script5(repo, log_path, v5)
+        cache_completed_phase(phase_cache, "f05", job["f05_key"], v5, row)
 
 
 def execute_event_based_job(
@@ -755,6 +1051,7 @@ def execute_event_based_job(
     manifest_path: Path,
     rows: list[dict[str, Any]],
     requires_measure_in_f02: bool,
+    phase_cache: dict[str, dict[str, dict[str, Any]]],
 ) -> None:
     repo = job["repo_path"]
     base = job["base"]
@@ -767,10 +1064,17 @@ def execute_event_based_job(
     bands_json = json_dumps_compact(bands)
 
     v2 = reusable_previous_variant(job, "f02", log_path)
-    if not v2:
+    if v2:
+        mark_phase(row, "f02", v2, False, manifest_path, rows)
+        run_make(repo, log_path, "script2", VARIANT=v2)
+        cache_completed_phase(phase_cache, "f02", job["f02_key"], v2, row)
+    else:
+        v2 = reusable_cached_variant(job, phase_cache, "f02", log_path)
+    if v2 and row.get("f02_variant") != v2:
+        mark_phase(row, "f02", v2, True, manifest_path, rows)
+    elif not v2:
         v2 = next_free_variant(repo, "f02_events", 2)
-        row["f02_variant"] = v2
-        append_or_update_manifest_row(manifest_path, rows, row)
+        mark_phase(row, "f02", v2, False, manifest_path, rows)
         variant2_args = {
             "VARIANT": v2,
             "PARENT": job["parent_f01"],
@@ -783,16 +1087,21 @@ def execute_event_based_job(
             "NAN_MODE": temporal["nan_mode"],
         })
         run_make(repo, log_path, "variant2", **variant2_args)
-    else:
-        row["f02_variant"] = v2
-        append_or_update_manifest_row(manifest_path, rows, row)
-    run_make(repo, log_path, "script2", VARIANT=v2)
+        run_make(repo, log_path, "script2", VARIANT=v2)
+        cache_completed_phase(phase_cache, "f02", job["f02_key"], v2, row)
 
     v3 = reusable_previous_variant(job, "f03", log_path)
-    if not v3:
+    if v3:
+        mark_phase(row, "f03", v3, False, manifest_path, rows)
+        run_make(repo, log_path, "script3", VARIANT=v3)
+        cache_completed_phase(phase_cache, "f03", job["f03_key"], v3, row)
+    else:
+        v3 = reusable_cached_variant(job, phase_cache, "f03", log_path)
+    if v3 and row.get("f03_variant") != v3:
+        mark_phase(row, "f03", v3, True, manifest_path, rows)
+    elif not v3:
         v3 = next_free_variant(repo, "f03_windows", 3)
-        row["f03_variant"] = v3
-        append_or_update_manifest_row(manifest_path, rows, row)
+        mark_phase(row, "f03", v3, False, manifest_path, rows)
         run_make(
             repo,
             log_path,
@@ -805,18 +1114,23 @@ def execute_event_based_job(
             STRATEGY=temporal["window_strategy"],
             NAN_MODE=temporal["nan_mode"],
         )
-    else:
-        row["f03_variant"] = v3
-        append_or_update_manifest_row(manifest_path, rows, row)
-    run_make(repo, log_path, "script3", VARIANT=v3)
+        run_make(repo, log_path, "script3", VARIANT=v3)
+        cache_completed_phase(phase_cache, "f03", job["f03_key"], v3, row)
 
     v4 = reusable_previous_variant(job, "f04", log_path)
-    if not v4:
+    if v4:
+        mark_phase(row, "f04", v4, False, manifest_path, rows)
+        run_make(repo, log_path, "script4", VARIANT=v4)
+        cache_completed_phase(phase_cache, "f04", job["f04_key"], v4, row)
+    else:
+        v4 = reusable_cached_variant(job, phase_cache, "f04", log_path)
+    if v4 and row.get("f04_variant") != v4:
+        mark_phase(row, "f04", v4, True, manifest_path, rows)
+    elif not v4:
         target_events = resolve_target_events(repo, v2, v3, measure, direction, threshold, bands, bands_id)
         events_json = json_dumps_compact(target_events)
         v4 = next_free_variant(repo, "f04_targets", 4)
-        row["f04_variant"] = v4
-        append_or_update_manifest_row(manifest_path, rows, row)
+        mark_phase(row, "f04", v4, False, manifest_path, rows)
         name = safe_name(f"{measure}_{direction}_{compact_number(threshold)}_{bands_id}")
         run_make(
             repo,
@@ -828,16 +1142,21 @@ def execute_event_based_job(
             OPERATOR="OR",
             EVENTS=events_json,
         )
-    else:
-        row["f04_variant"] = v4
-        append_or_update_manifest_row(manifest_path, rows, row)
-    run_make(repo, log_path, "script4", VARIANT=v4)
+        run_make(repo, log_path, "script4", VARIANT=v4)
+        cache_completed_phase(phase_cache, "f04", job["f04_key"], v4, row)
 
     v5 = reusable_previous_variant(job, "f05", log_path)
-    if not v5:
+    if v5:
+        mark_phase(row, "f05", v5, False, manifest_path, rows)
+        run_script5(repo, log_path, v5)
+        cache_completed_phase(phase_cache, "f05", job["f05_key"], v5, row)
+    else:
+        v5 = reusable_cached_variant(job, phase_cache, "f05", log_path)
+    if v5 and row.get("f05_variant") != v5:
+        mark_phase(row, "f05", v5, True, manifest_path, rows)
+    elif not v5:
         v5 = next_free_variant(repo, "f05_modeling", 5)
-        row["f05_variant"] = v5
-        append_or_update_manifest_row(manifest_path, rows, row)
+        mark_phase(row, "f05", v5, False, manifest_path, rows)
         run_make(
             repo,
             log_path,
@@ -847,20 +1166,35 @@ def execute_event_based_job(
             MODEL_FAMILY=base["model_family"],
             IMBALANCE_STRATEGY=base["imbalance_strategy"],
             IMBALANCE_MAX_MAJ=base["imbalance_max_maj"],
+            DEDUP_MODE=job.get("deduplication_mode", "none"),
             SEED=base["seed"],
         )
-    else:
-        row["f05_variant"] = v5
-        append_or_update_manifest_row(manifest_path, rows, row)
-    run_make(repo, log_path, "script5", VARIANT=v5)
+        run_script5(repo, log_path, v5)
+        cache_completed_phase(phase_cache, "f05", job["f05_key"], v5, row)
 
 
-def execute_events_job(job: dict[str, Any], run_dir: Path, log_path: Path, row: dict[str, Any], manifest_path: Path, rows: list[dict[str, Any]]) -> None:
-    execute_event_based_job(job, run_dir, log_path, row, manifest_path, rows, requires_measure_in_f02=False)
+def execute_events_job(
+    job: dict[str, Any],
+    run_dir: Path,
+    log_path: Path,
+    row: dict[str, Any],
+    manifest_path: Path,
+    rows: list[dict[str, Any]],
+    phase_cache: dict[str, dict[str, dict[str, Any]]],
+) -> None:
+    execute_event_based_job(job, run_dir, log_path, row, manifest_path, rows, requires_measure_in_f02=False, phase_cache=phase_cache)
 
 
-def execute_uni_events_job(job: dict[str, Any], run_dir: Path, log_path: Path, row: dict[str, Any], manifest_path: Path, rows: list[dict[str, Any]]) -> None:
-    execute_event_based_job(job, run_dir, log_path, row, manifest_path, rows, requires_measure_in_f02=True)
+def execute_uni_events_job(
+    job: dict[str, Any],
+    run_dir: Path,
+    log_path: Path,
+    row: dict[str, Any],
+    manifest_path: Path,
+    rows: list[dict[str, Any]],
+    phase_cache: dict[str, dict[str, dict[str, Any]]],
+) -> None:
+    execute_event_based_job(job, run_dir, log_path, row, manifest_path, rows, requires_measure_in_f02=True, phase_cache=phase_cache)
 
 
 def load_structured_file(path: Path) -> Any:
@@ -949,17 +1283,25 @@ def resolve_target_events(
     )
 
 
-def execute_job(job: dict[str, Any], run_id: str, run_dir: Path, manifest_path: Path, rows: list[dict[str, Any]], outputs_config: dict[str, Any]) -> None:
+def execute_job(
+    job: dict[str, Any],
+    run_id: str,
+    run_dir: Path,
+    manifest_path: Path,
+    rows: list[dict[str, Any]],
+    outputs_config: dict[str, Any],
+    phase_cache: dict[str, dict[str, dict[str, Any]]],
+) -> None:
     log_path = run_dir / "logs" / f"{job['job_key']}_{job['pipeline']}.log"
     row = initial_manifest_row(run_id, run_dir, job)
     append_or_update_manifest_row(manifest_path, rows, row)
     try:
         if job["pipeline"] == "ts":
-            execute_ts_job(job, run_dir, log_path, row, manifest_path, rows)
+            execute_ts_job(job, run_dir, log_path, row, manifest_path, rows, phase_cache)
         elif job["pipeline"] == "events":
-            execute_events_job(job, run_dir, log_path, row, manifest_path, rows)
+            execute_events_job(job, run_dir, log_path, row, manifest_path, rows, phase_cache)
         elif job["pipeline"] == "uniEvents":
-            execute_uni_events_job(job, run_dir, log_path, row, manifest_path, rows)
+            execute_uni_events_job(job, run_dir, log_path, row, manifest_path, rows, phase_cache)
         else:
             raise RuntimeError(f"Unsupported pipeline: {job['pipeline']}")
         row["status"] = "COMPLETED"
@@ -982,6 +1324,7 @@ def main() -> None:
     jobs = expand_jobs(cfg)
     outputs_config = load_outputs_config(cfg)
     completed, failed_attempts = load_job_attempts()
+    phase_cache = build_phase_cache()
     pending = [job for job in jobs if job["job_key"] not in completed]
     for job in pending:
         previous_attempt = failed_attempts.get(job["job_key"])
@@ -1006,7 +1349,7 @@ def main() -> None:
     print(f"Created run: {run_id}")
     for idx, job in enumerate(pending, start=1):
         print(f"[{idx}/{len(pending)}] Running {job['pipeline']} job {job['job_key']} ({job['measure']} {job['direction']} temporal={job['temporal_id']} threshold={job['effective_threshold']})")
-        execute_job(job, run_id, run_dir, manifest_path, rows, outputs_config)
+        execute_job(job, run_id, run_dir, manifest_path, rows, outputs_config, phase_cache)
 
     print(f"Done. Manifest: {manifest_path}")
 

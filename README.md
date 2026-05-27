@@ -43,6 +43,21 @@ grid:
     - low
 ```
 
+## Deduplicacion En F05
+
+Puedes cruzar varios modos de deduplicacion de modeling con `grid.deduplication_modes`:
+
+```yaml
+grid:
+  deduplication_modes:
+    - none
+    - auto
+    - neg_only
+    - all
+```
+
+Si no se define, el valor por defecto es `none`. Este parametro solo afecta a F05, se pasa como `DEDUP_MODE` a `make variant5` y forma parte de la identidad del modelo. Cambiarlo crea una nueva F05, pero el orquestador intenta reutilizar F02/F03/F04 si ya existen fases equivalentes.
+
 ## Configuraciones Temporales
 
 Puedes probar varias combinaciones de ventana en `grid.temporal_configs`:
@@ -138,6 +153,8 @@ La identidad de cada job se calcula con un hash estable (`job_key`) a partir de 
 
 Si un job est? `FAILED`, se puede reintentar en una ejecuci?n posterior. Solo se saltan los que ya est?n `COMPLETED`.
 
+Ademas del `job_key`, el orquestador calcula claves de fase (`f02_key`, `f03_key`, `f04_key`, `f05_key`). Al iniciar, construye un cache desde manifests `COMPLETED` y solo reutiliza una fase si la variante existe fisicamente en el repo original. Una fase reutilizada no ejecuta `make scriptX`; se usa directamente como parent de la fase siguiente. Los retries de jobs `FAILED` siguen usando la variante previa y ejecutan `scriptX` para continuar/reintentar.
+
 ## Outputs
 
 La secci?n `outputs:` de `experiment.yaml` controla qu? archivos se copian desde las variantes generadas.
@@ -196,7 +213,7 @@ El resultado queda en:
 reports/report.html
 ```
 
-El report agrupa los modelos por medida, direccion, `effective_threshold`, configuracion temporal, bandas y pipeline. Tambien incluye rankings top 10 por F1, recall y precision, y enlaza las variantes F02/F03/F04/F05 con sus rutas locales y originales cuando estan disponibles.
+El report agrupa los modelos por medida, direccion, `effective_threshold`, configuracion temporal, bandas y pipeline. Tambien incluye rankings top 10 por F1, recall y precision usando las metricas principales de F05 (`test_f1`, `test_recall`, `test_precision`). Para outputs antiguos que solo tengan metricas `*_at_threshold`, mantiene fallback compatible. Tambien muestra `decision_threshold`, `threshold_source`, `threshold_policy` y si se aplico cap estratificado en val/test cuando estan disponibles.
 
 ## Resultados
 

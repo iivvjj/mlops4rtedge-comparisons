@@ -19,6 +19,36 @@ PIPELINE_ORDER = ["ts", "events", "uniEvents"]
 PIPELINE_LABELS = {"ts": "TS", "events": "Events", "uniEvents": "UniEvents"}
 
 F05_METRIC_KEYS = [
+    "selection_metric",
+    "selection_score",
+    "min_precision",
+    "min_precision_satisfied",
+    "selected_threshold",
+    "threshold_source",
+    "threshold_policy",
+    "val_precision",
+    "val_recall",
+    "val_f1",
+    "test_tp",
+    "test_tn",
+    "test_fp",
+    "test_fn",
+    "val_precision_at_threshold",
+    "val_recall_at_threshold",
+    "val_f1_at_threshold",
+    "test_precision_at_threshold",
+    "test_recall_at_threshold",
+    "test_f1_at_threshold",
+    "val_positive_ratio",
+    "test_positive_ratio",
+    "val_cap_used",
+    "test_cap_used",
+    "val_max_samples",
+    "test_max_samples",
+    "val_positive_ratio_before",
+    "val_positive_ratio_after",
+    "test_positive_ratio_before",
+    "test_positive_ratio_after",
     "test_precision",
     "test_recall",
     "test_f1",
@@ -37,18 +67,41 @@ F05_METRIC_KEYS = [
     "execution_time",
 ]
 
+CRITERION_COLUMNS = [
+    "best_by_f1_f1",
+    "best_by_f1_recall",
+    "best_by_f1_precision",
+    "best_by_precision_f1",
+    "best_by_precision_recall",
+    "best_by_precision_precision",
+    "best_by_recall_f1",
+    "best_by_recall_recall",
+    "best_by_recall_precision",
+    "delta_f1_choice_f1_vs_recall_choice",
+    "delta_f1_choice_recall_vs_recall_choice",
+    "delta_precision_choice_precision_vs_recall_choice",
+    "delta_precision_choice_recall_vs_recall_choice",
+]
+
 BLOCK_TABLE_COLUMNS = [
     "pipeline",
     "bands_id",
+    "deduplication_mode",
     "f05_variant",
-    "test_precision",
-    "test_recall",
-    "test_f1",
-    "best_val_recall",
+    "test_precision_effective",
+    "test_recall_effective",
+    "test_f1_effective",
+    "val_recall_effective",
+    "decision_threshold_effective",
+    "threshold_source_effective",
+    "threshold_policy_effective",
     "positive_ratio_train",
+    "val_positive_ratio_effective",
+    "test_positive_ratio_effective",
     "n_train",
     "n_val",
     "n_test",
+    *CRITERION_COLUMNS,
     "local_output_path",
 ]
 
@@ -138,8 +191,75 @@ def direction_sort_value(direction: str) -> tuple[int, str]:
     return (order.get(direction, 2), direction)
 
 
+def first_available(mapping: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = mapping.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def nested_metric(block: Any, metric: str) -> float | None:
+    if not isinstance(block, dict):
+        return None
+    return as_float(block.get(metric))
+
+
+def delta(left: Any, right: Any) -> float | None:
+    left_float = as_float(left)
+    right_float = as_float(right)
+    if left_float is None or right_float is None:
+        return None
+    return left_float - right_float
+
+
+def extract_criterion_metrics(outputs: dict[str, Any]) -> dict[str, Any]:
+    metrics_root = outputs.get("metrics") if isinstance(outputs.get("metrics"), dict) else {}
+    best_by_f1 = metrics_root.get("mejor_modelo_f1") or walk_values(outputs, "mejor_modelo_f1")
+    best_by_precision = metrics_root.get("mejor_modelo_precision") or walk_values(outputs, "mejor_modelo_precision")
+    best_by_recall = metrics_root.get("mejor_modelo_recall") or walk_values(outputs, "mejor_modelo_recall")
+
+    extracted = {
+        "best_by_f1_f1": nested_metric(best_by_f1, "f1"),
+        "best_by_f1_recall": nested_metric(best_by_f1, "recall"),
+        "best_by_f1_precision": nested_metric(best_by_f1, "precision"),
+        "best_by_precision_f1": nested_metric(best_by_precision, "f1"),
+        "best_by_precision_recall": nested_metric(best_by_precision, "recall"),
+        "best_by_precision_precision": nested_metric(best_by_precision, "precision"),
+        "best_by_recall_f1": nested_metric(best_by_recall, "f1"),
+        "best_by_recall_recall": nested_metric(best_by_recall, "recall"),
+        "best_by_recall_precision": nested_metric(best_by_recall, "precision"),
+    }
+    extracted.update({
+        "delta_f1_choice_f1_vs_recall_choice": delta(extracted["best_by_f1_f1"], extracted["best_by_recall_f1"]),
+        "delta_f1_choice_recall_vs_recall_choice": delta(extracted["best_by_f1_recall"], extracted["best_by_recall_recall"]),
+        "delta_precision_choice_precision_vs_recall_choice": delta(extracted["best_by_precision_precision"], extracted["best_by_recall_precision"]),
+        "delta_precision_choice_recall_vs_recall_choice": delta(extracted["best_by_precision_recall"], extracted["best_by_recall_recall"]),
+    })
+    return extracted
+
+
 def extract_f05_metrics(outputs: dict[str, Any]) -> dict[str, Any]:
-    return {key: walk_values(outputs, key) for key in F05_METRIC_KEYS}
+    metrics = {key: walk_values(outputs, key) for key in F05_METRIC_KEYS}
+    metrics.update(extract_criterion_metrics(outputs))
+    metrics.update({
+        "test_precision_effective": first_available(metrics, "test_precision", "test_precision_at_threshold"),
+        "test_recall_effective": first_available(metrics, "test_recall", "test_recall_at_threshold"),
+        "test_f1_effective": first_available(metrics, "test_f1", "test_f1_at_threshold"),
+        "val_precision_effective": first_available(metrics, "val_precision", "val_precision_at_threshold"),
+        "val_recall_effective": first_available(metrics, "val_recall", "val_recall_at_threshold", "best_val_recall"),
+        "val_f1_effective": first_available(metrics, "val_f1", "val_f1_at_threshold"),
+        "decision_threshold_effective": first_available(metrics, "decision_threshold", "selected_threshold"),
+        "threshold_source_effective": first_available(metrics, "threshold_source"),
+        "threshold_policy_effective": first_available(metrics, "threshold_policy"),
+        "val_positive_ratio_effective": first_available(metrics, "val_positive_ratio", "positive_ratio_val"),
+        "test_positive_ratio_effective": first_available(metrics, "test_positive_ratio", "positive_ratio_test"),
+    })
+    if metrics["threshold_source_effective"] in (None, "") and metrics.get("decision_threshold") not in (None, ""):
+        metrics["threshold_source_effective"] = "legacy_or_unknown"
+    if metrics["threshold_policy_effective"] in (None, "") and metrics.get("decision_threshold") not in (None, ""):
+        metrics["threshold_policy_effective"] = "legacy_or_unknown"
+    return metrics
 
 
 def extract_f04_metrics(outputs: dict[str, Any]) -> dict[str, Any]:
@@ -156,11 +276,34 @@ def extract_f04_metrics(outputs: dict[str, Any]) -> dict[str, Any]:
 
 def load_metrics_for_model(model: dict[str, Any]) -> dict[str, Any]:
     output_root = local_path(model.get("local_output_path"))
+    variant_paths = model.get("variant_paths") or {}
     f05_outputs = load_yaml(output_root / "f05" / "outputs.yaml") if output_root else {}
     f04_outputs = load_yaml(output_root / "f04" / "outputs.yaml") if output_root else {}
+    if not f05_outputs:
+        f05_outputs = load_yaml(local_path(variant_paths.get("f05")) / "outputs.yaml" if variant_paths.get("f05") else None)
+    if not f04_outputs:
+        f04_outputs = load_yaml(local_path(variant_paths.get("f04")) / "outputs.yaml" if variant_paths.get("f04") else None)
     metrics = extract_f05_metrics(f05_outputs)
     metrics.update(extract_f04_metrics(f04_outputs))
     return metrics
+
+
+def iter_band_models(bands_key: str, bands_node: Any) -> list[dict[str, Any]]:
+    if not isinstance(bands_node, dict):
+        return []
+    models = bands_node.get("models")
+    if isinstance(models, list):
+        rows = []
+        for model in models:
+            if not isinstance(model, dict):
+                continue
+            merged = dict(model)
+            merged.setdefault("bands_id", bands_node.get("bands_id"))
+            merged.setdefault("bands", bands_node.get("bands"))
+            rows.append(merged)
+        return rows
+    # Backward compatibility with model_index.yaml generated before bands kept lists.
+    return [bands_node] if bands_node.get("variants") or bands_node.get("model") else []
 
 
 def flatten_models_from_index(index: dict[str, Any]) -> list[dict[str, Any]]:
@@ -176,37 +319,39 @@ def flatten_models_from_index(index: dict[str, Any]) -> list[dict[str, Any]]:
                 for temporal_config_id, temporal_node in temporal_configs.items():
                     pipelines = (temporal_node or {}).get("pipelines") or {}
                     for pipeline, bands_map in pipelines.items():
-                        for bands_key, model in (bands_map or {}).items():
-                            if not isinstance(model, dict):
-                                continue
-                            variants = model.get("variants") or {}
-                            variant_paths = model.get("variant_paths") or {}
-                            model_info = model.get("model") or {}
-                            row = {
-                                "measure": measure,
-                                "direction": direction,
-                                "effective_threshold": str(threshold_key).replace("threshold_", ""),
-                                "threshold_key": threshold_key,
-                                "temporal_config_id": temporal_config_id,
-                                "OW": temporal_node.get("OW"),
-                                "PW": temporal_node.get("PW"),
-                                "LT": temporal_node.get("LT"),
-                                "window_strategy": temporal_node.get("window_strategy"),
-                                "pipeline": pipeline,
-                                "bands_key": bands_key,
-                                "bands_id": model.get("bands_id") or "no_bands",
-                                "bands": model.get("bands") or [],
-                                "model_family": model_info.get("model_family"),
-                                "seed": model_info.get("seed"),
-                                "job_key": model.get("job_key"),
-                                "run_id": model.get("run_id"),
-                                "status": model.get("status"),
-                                "f05_variant": variants.get("f05"),
-                                "local_output_path": normalize_path(model.get("local_output_path")),
-                                "f05_path": normalize_path(variant_paths.get("f05")),
-                            }
-                            row.update(load_metrics_for_model(model))
-                            rows.append(row)
+                        for bands_key, bands_node in (bands_map or {}).items():
+                            for model in iter_band_models(bands_key, bands_node):
+                                if not isinstance(model, dict):
+                                    continue
+                                variants = model.get("variants") or {}
+                                variant_paths = model.get("variant_paths") or {}
+                                model_info = model.get("model") or {}
+                                row = {
+                                    "measure": measure,
+                                    "direction": direction,
+                                    "effective_threshold": str(threshold_key).replace("threshold_", ""),
+                                    "threshold_key": threshold_key,
+                                    "temporal_config_id": temporal_config_id,
+                                    "OW": temporal_node.get("OW"),
+                                    "PW": temporal_node.get("PW"),
+                                    "LT": temporal_node.get("LT"),
+                                    "window_strategy": temporal_node.get("window_strategy"),
+                                    "pipeline": pipeline,
+                                    "bands_key": bands_key,
+                                    "bands_id": model.get("bands_id") or "no_bands",
+                                    "bands": model.get("bands") or [],
+                                    "model_family": model_info.get("model_family"),
+                                    "deduplication_mode": model_info.get("deduplication_mode") or "none",
+                                    "seed": model_info.get("seed"),
+                                    "job_key": model.get("job_key"),
+                                    "run_id": model.get("run_id"),
+                                    "status": model.get("status"),
+                                    "f05_variant": variants.get("f05"),
+                                    "local_output_path": normalize_path(model.get("local_output_path")),
+                                    "f05_path": normalize_path(variant_paths.get("f05")),
+                                }
+                                row.update(load_metrics_for_model(model))
+                                rows.append(row)
     return rows
 
 
@@ -233,6 +378,39 @@ def build_global_summary(index: dict[str, Any], rows: list[dict[str, Any]]) -> d
     return summary
 
 
+def average(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def build_criterion_analysis(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    available = [row for row in rows if as_float(row.get("best_by_recall_recall")) is not None]
+    f1_gains = [
+        value for value in (delta(row.get("best_by_f1_f1"), row.get("best_by_recall_f1")) for row in available)
+        if value is not None
+    ]
+    precision_gains = [
+        value for value in (delta(row.get("best_by_precision_precision"), row.get("best_by_recall_precision")) for row in available)
+        if value is not None
+    ]
+    recall_losses_if_f1 = [
+        value for value in (delta(row.get("best_by_recall_recall"), row.get("best_by_f1_recall")) for row in available)
+        if value is not None
+    ]
+    recall_losses_if_precision = [
+        value for value in (delta(row.get("best_by_recall_recall"), row.get("best_by_precision_recall")) for row in available)
+        if value is not None
+    ]
+    return {
+        "n_blocks": len(available),
+        "f1_choice_improves_f1_count": sum(1 for value in f1_gains if value > 0),
+        "precision_choice_improves_precision_count": sum(1 for value in precision_gains if value > 0),
+        "avg_recall_loss_if_select_f1": average(recall_losses_if_f1),
+        "avg_recall_loss_if_select_precision": average(recall_losses_if_precision),
+        "avg_f1_gain_if_select_f1": average(f1_gains),
+        "avg_precision_gain_if_select_precision": average(precision_gains),
+    }
+
+
 def build_rankings(rows: list[dict[str, Any]], metric: str, limit: int = 10) -> list[dict[str, Any]]:
     ranked = [row for row in rows if as_float(row.get(metric)) is not None]
     ranked.sort(key=lambda row: as_float(row.get(metric)) or float("-inf"), reverse=True)
@@ -240,7 +418,7 @@ def build_rankings(rows: list[dict[str, Any]], metric: str, limit: int = 10) -> 
 
 
 def best_f1_rows(rows: list[dict[str, Any]]) -> set[int]:
-    scored = [(idx, as_float(row.get("test_f1"))) for idx, row in enumerate(rows)]
+    scored = [(idx, as_float(row.get("test_f1_effective"))) for idx, row in enumerate(rows)]
     scored = [(idx, score) for idx, score in scored if score is not None]
     if not scored:
         return set()
@@ -248,9 +426,14 @@ def best_f1_rows(rows: list[dict[str, Any]]) -> set[int]:
     return {idx for idx, score in scored if score == best}
 
 
-def model_sort_key(row: dict[str, Any]) -> tuple[str, float, str]:
-    score = as_float(row.get("test_f1"))
-    return (str(row.get("bands_id")), -(score if score is not None else -1.0), str(row.get("f05_variant")))
+def model_sort_key(row: dict[str, Any]) -> tuple[str, str, float, str]:
+    score = as_float(row.get("test_f1_effective"))
+    return (
+        str(row.get("bands_id")),
+        str(row.get("deduplication_mode") or "none"),
+        -(score if score is not None else -1.0),
+        str(row.get("f05_variant")),
+    )
 
 
 def render_metric(label: str, value: Any) -> str:
@@ -261,6 +444,74 @@ def render_kv(label: str, value: Any) -> str:
     return f"<div><span>{esc(label)}</span><strong>{esc(value)}</strong></div>"
 
 
+def delta_class(value: Any) -> str:
+    parsed = as_float(value)
+    if parsed is None or parsed == 0:
+        return "neutral"
+    return "positive" if parsed > 0 else "negative"
+
+
+def render_delta(label: str, value: Any) -> str:
+    if as_float(value) is None:
+        return ""
+    sign = "+" if (as_float(value) or 0) > 0 else ""
+    return f'<div class="criterion-delta {delta_class(value)}"><span>{esc(label)}</span><strong>{sign}{esc(value)}</strong></div>'
+
+
+def has_criterion_metrics(row: dict[str, Any]) -> bool:
+    return any(as_float(row.get(column)) is not None for column in CRITERION_COLUMNS[:9])
+
+
+def render_criterion_card(title: str, prefix: str, row: dict[str, Any], badges: list[str], deltas: list[tuple[str, str]]) -> str:
+    metric_rows = [
+        ("F1", row.get(f"{prefix}_f1")),
+        ("Recall", row.get(f"{prefix}_recall")),
+        ("Precision", row.get(f"{prefix}_precision")),
+    ]
+    badge_html = "".join(f'<span class="criterion-badge">{esc(badge)}</span>' for badge in badges)
+    delta_html = "".join(render_delta(label, row.get(key)) for label, key in deltas)
+    return f"""
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>{esc(title)}</strong>{badge_html}</div>
+        <div class="criterion-values">
+          {''.join(render_kv(label, value) for label, value in metric_rows)}
+        </div>
+        {f'<div class="criterion-deltas">{delta_html}</div>' if delta_html else ''}
+      </div>
+    """
+
+
+def render_criterion_comparison(row: dict[str, Any]) -> str:
+    if not has_criterion_metrics(row):
+        return '<p class="muted criterion-note">Criterion comparison not available for this output.</p>'
+
+    f1_badges = []
+    precision_badges = []
+    recall_badges = ["selected"]
+    if (as_float(row.get("delta_f1_choice_f1_vs_recall_choice")) or 0) > 0:
+        f1_badges.append("better F1")
+    if (as_float(row.get("delta_precision_choice_precision_vs_recall_choice")) or 0) > 0:
+        precision_badges.append("better precision")
+
+    return f"""
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      {render_criterion_card("Best by F1", "best_by_f1", row, f1_badges, [
+          ("Delta F1 vs selected", "delta_f1_choice_f1_vs_recall_choice"),
+          ("Delta recall vs selected", "delta_f1_choice_recall_vs_recall_choice"),
+      ])}
+      {render_criterion_card("Best by Precision", "best_by_precision", row, precision_badges, [
+          ("Delta precision vs selected", "delta_precision_choice_precision_vs_recall_choice"),
+          ("Delta recall vs selected", "delta_precision_choice_recall_vs_recall_choice"),
+      ])}
+      {render_criterion_card("Best by Recall", "best_by_recall", row, recall_badges, [])}
+    </div>
+  </details>
+"""
+
+
 def render_model_card(row: dict[str, Any], is_best: bool) -> str:
     pipeline = row.get("pipeline")
     class_name = f"model-card {pipeline}"
@@ -269,9 +520,18 @@ def render_model_card(row: dict[str, Any], is_best: bool) -> str:
     if pipeline != "ts":
         bands_line = f'<p class="bands">bands: {esc(row.get("bands"))}</p>'
     secondary = [
-        ("best_val_recall", row.get("best_val_recall")),
-        ("decision_threshold", row.get("decision_threshold")),
+        ("val_recall", row.get("val_recall_effective")),
+        ("val_precision", row.get("val_precision_effective")),
+        ("val_f1", row.get("val_f1_effective")),
+        ("deduplication_mode", row.get("deduplication_mode")),
+        ("decision_threshold", row.get("decision_threshold_effective")),
+        ("threshold_source", row.get("threshold_source_effective")),
+        ("threshold_policy", row.get("threshold_policy_effective")),
         ("positive_ratio_train", row.get("positive_ratio_train")),
+        ("val_positive_ratio", row.get("val_positive_ratio_effective")),
+        ("test_positive_ratio", row.get("test_positive_ratio_effective")),
+        ("val_cap_used", row.get("val_cap_used")),
+        ("test_cap_used", row.get("test_cap_used")),
         ("n_train", row.get("n_train")),
         ("n_val", row.get("n_val")),
         ("n_test", row.get("n_test")),
@@ -292,20 +552,21 @@ def render_model_card(row: dict[str, Any], is_best: bool) -> str:
   <div class="card-head">
     <div>
       <h5>{esc(PIPELINE_LABELS.get(str(pipeline), pipeline))}</h5>
-      <p>{esc(row.get("bands_id") or "no_bands")} · {esc(row.get("f05_variant"))}</p>
+      <p>{esc(row.get("bands_id") or "no_bands")} · {esc(row.get("deduplication_mode") or "none")} · {esc(row.get("f05_variant"))}</p>
     </div>
     <span class="status">{esc(row.get("status"))}</span>
   </div>
   {best_badge}
   {bands_line}
   <div class="main-metrics">
-    {render_metric("F1", row.get("test_f1"))}
-    {render_metric("Recall", row.get("test_recall"))}
-    {render_metric("Precision", row.get("test_precision"))}
+    {render_metric("F1", row.get("test_f1_effective"))}
+    {render_metric("Recall", row.get("test_recall_effective"))}
+    {render_metric("Precision", row.get("test_precision_effective"))}
   </div>
   <div class="kv-grid">
     {''.join(render_kv(label, value) for label, value in secondary)}
   </div>
+  {render_criterion_comparison(row)}
   <details>
     <summary>Traceability</summary>
     <div class="trace">
@@ -368,9 +629,13 @@ def render_comparison_block(key: tuple[str, str, str, str], block: dict[str, lis
 
 
 def render_rankings(rows: list[dict[str, Any]]) -> str:
-    columns = ["measure", "direction", "effective_threshold", "temporal_config_id", "pipeline", "bands_id", "f05_variant", "test_precision", "test_recall", "test_f1", "local_output_path"]
+    columns = ["measure", "direction", "effective_threshold", "temporal_config_id", "pipeline", "bands_id", "deduplication_mode", "f05_variant", "test_precision_effective", "test_recall_effective", "test_f1_effective", "decision_threshold_effective", "threshold_source_effective", "threshold_policy_effective", "local_output_path"]
     parts = []
-    for metric, title in [("test_f1", "Top 10 by test_f1"), ("test_recall", "Top 10 by test_recall"), ("test_precision", "Top 10 by test_precision")]:
+    for metric, title in [
+        ("test_f1_effective", "Top 10 by test_f1"),
+        ("test_recall_effective", "Top 10 by test_recall"),
+        ("test_precision_effective", "Top 10 by test_precision"),
+    ]:
         ranked = build_rankings(rows, metric)
         header = "".join(f"<th>{esc(col)}</th>" for col in columns)
         body = []
@@ -380,6 +645,28 @@ def render_rankings(rows: list[dict[str, Any]]) -> str:
             body.append(f'<tr><td colspan="{len(columns)}" class="muted">No ranked models.</td></tr>')
         parts.append(f'<div class="ranking"><h3>{esc(title)}</h3><table><thead><tr>{header}</tr></thead><tbody>{"".join(body)}</tbody></table></div>')
     return "\n".join(parts)
+
+
+def render_criterion_analysis(rows: list[dict[str, Any]]) -> str:
+    analysis = build_criterion_analysis(rows)
+    items = [
+        ("n_blocks", analysis["n_blocks"]),
+        ("f1_choice_improves_f1_count", analysis["f1_choice_improves_f1_count"]),
+        ("precision_choice_improves_precision_count", analysis["precision_choice_improves_precision_count"]),
+        ("avg_recall_loss_if_select_f1", analysis["avg_recall_loss_if_select_f1"]),
+        ("avg_recall_loss_if_select_precision", analysis["avg_recall_loss_if_select_precision"]),
+        ("avg_f1_gain_if_select_f1", analysis["avg_f1_gain_if_select_f1"]),
+        ("avg_precision_gain_if_select_precision", analysis["avg_precision_gain_if_select_precision"]),
+    ]
+    return f"""
+    <section class="criterion-analysis">
+      <h2>Criterion Analysis</h2>
+      <p class="muted">Aggregated over outputs that include the new F05 validation candidate blocks.</p>
+      <div class="summary-grid">
+        {''.join(f'<div class="stat"><span>{esc(label)}</span><strong>{esc(value)}</strong></div>' for label, value in items)}
+      </div>
+    </section>
+"""
 
 
 def render_html(index: dict[str, Any], rows: list[dict[str, Any]]) -> str:
@@ -442,6 +729,20 @@ def render_html(index: dict[str, Any], rows: list[dict[str, Any]]) -> str:
     .metric {{ background: #fff; border: 1px solid var(--line); border-radius: 7px; padding: 9px; }}
     .metric span {{ display: block; color: var(--muted); font-size: 11px; }}
     .metric strong {{ display: block; font-size: 18px; margin-top: 3px; }}
+    .criterion-analysis {{ margin-top: 24px; }}
+    .criterion-details {{ border-top: 1px solid var(--line); padding-top: 9px; }}
+    .criterion-note {{ font-size: 12px; line-height: 1.4; }}
+    .criterion-grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }}
+    .criterion-card {{ background: #fff; border: 1px solid var(--line); border-radius: 7px; padding: 9px; }}
+    .criterion-title {{ display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: #102a43; }}
+    .criterion-badge {{ border: 1px solid #b8c2cc; background: #f4f7fb; border-radius: 999px; padding: 2px 6px; font-size: 10px; white-space: nowrap; }}
+    .criterion-values {{ display: grid; gap: 4px; margin-top: 8px; font-size: 11px; }}
+    .criterion-values div {{ display: flex; justify-content: space-between; gap: 8px; }}
+    .criterion-values span, .criterion-delta span {{ color: var(--muted); }}
+    .criterion-deltas {{ border-top: 1px dashed var(--line); margin-top: 7px; padding-top: 6px; display: grid; gap: 4px; font-size: 11px; }}
+    .criterion-delta {{ display: flex; justify-content: space-between; gap: 8px; }}
+    .criterion-delta.positive strong {{ color: #13795b; }}
+    .criterion-delta.negative strong {{ color: #b45309; }}
     .kv-grid, .trace {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; font-size: 12px; }}
     .kv-grid span, .trace span {{ display: block; color: var(--muted); }}
     .kv-grid strong, .trace strong {{ overflow-wrap: anywhere; }}
@@ -452,7 +753,7 @@ def render_html(index: dict[str, Any], rows: list[dict[str, Any]]) -> str:
     th, td {{ border: 1px solid var(--line); padding: 7px; text-align: left; vertical-align: top; }}
     th {{ background: #eef2f7; }}
     .path {{ font-family: Consolas, monospace; overflow-wrap: anywhere; }}
-    @media (max-width: 1050px) {{ .pipeline-grid {{ grid-template-columns: 1fr; }} }}
+    @media (max-width: 1050px) {{ .pipeline-grid, .criterion-grid {{ grid-template-columns: 1fr; }} }}
   </style>
 </head>
 <body>
@@ -471,6 +772,7 @@ def render_html(index: dict[str, Any], rows: list[dict[str, Any]]) -> str:
       <h2>Global Rankings</h2>
       {render_rankings(rows)}
     </section>
+    {render_criterion_analysis(rows)}
     <section>
       <h2>Comparison Blocks</h2>
       {blocks_html}
