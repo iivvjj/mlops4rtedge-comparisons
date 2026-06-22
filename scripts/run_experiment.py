@@ -3,12 +3,16 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import hashlib
 import json
+import os
 import re
+import shlex
 import shutil
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -21,12 +25,27 @@ CONFIG_PATH = REPO_ROOT / "experiment.yaml"
 RUNS_DIR = REPO_ROOT / "runs"
 F56_GPU_FOR_SCRIPT5 = True
 
-PHASES = {
+
+def make_shell_path(path: str) -> str:
+    raw = str(Path(path))
+    drive = Path(raw).drive
+    if drive:
+        return "/" + drive[0].lower() + raw.replace(drive, "").replace("\\", "/")
+    return raw.replace("\\", "/")
+
+
+PYTHON_LOCAL_FOR_MAKE = make_shell_path(sys.executable)
+GIT_BASH = Path(r"C:\Program Files\Git\bin\bash.exe")
+
+DEFAULT_PHASES = {
     "f02": ("f02_events", 2),
     "f03": ("f03_windows", 3),
     "f04": ("f04_targets", 4),
     "f05": ("f05_modeling", 5),
+    "f06": ("f06_quant", 6),
 }
+PHASES = dict(DEFAULT_PHASES)
+PHASE_NAME_ALIASES: dict[str, list[str]] = {phase: [cfg[0]] for phase, cfg in DEFAULT_PHASES.items()}
 
 ALLOWED_PIPELINES = {"ts", "events", "uniEvents"}
 
@@ -57,14 +76,17 @@ MANIFEST_COLUMNS = [
     "f03_variant",
     "f04_variant",
     "f05_variant",
+    "f06_variant",
     "f02_key",
     "f03_key",
     "f04_key",
     "f05_key",
+    "f06_key",
     "f02_reused",
     "f03_reused",
     "f04_reused",
     "f05_reused",
+    "f06_reused",
     "started_at",
     "finished_at",
     "repo_path",
@@ -80,6 +102,7 @@ DEFAULT_OUTPUTS_CONFIG = {
         "f03": {"phase_name": "f03_windows", "variant_column": "f03_variant"},
         "f04": {"phase_name": "f04_targets", "variant_column": "f04_variant"},
         "f05": {"phase_name": "f05_modeling", "variant_column": "f05_variant"},
+        "f06": {"phase_name": "f06_quant", "variant_column": "f06_variant"},
     },
     "destination_template": "runs/{run_id}/outputs/{pipeline}/{job_key}/{phase}",
     "always_copy": ["params.yaml", "outputs.yaml", "metadata.yaml"],
@@ -327,6 +350,33 @@ def build_f05_key(job: dict[str, Any], f04_key: str) -> str:
     training = field_value(job, "training", {}) or {}
     if training:
         identity["training"] = training
+    automl = field_value(job, "automl", {}) or {}
+    if automl:
+        identity["automl"] = automl
+    evaluation = field_value(job, "evaluation", {}) or {}
+    if evaluation:
+        identity["evaluation"] = evaluation
+    return build_identity_key(identity)
+
+
+def build_f06_key(job: dict[str, Any], f05_key: str) -> str:
+    identity = {
+        "pipeline": field_value(job, "pipeline"),
+        "repo_path": job_repo_path(job),
+        "f05_key": f05_key,
+    }
+    deployment = field_value(job, "deployment", {}) or {}
+    quantization = field_value(job, "quantization", {}) or {}
+    thresholding = field_value(job, "thresholding", {}) or {}
+    eedu = field_value(job, "eedu", {}) or {}
+    if deployment:
+        identity["deployment"] = deployment
+    if quantization:
+        identity["quantization"] = quantization
+    if thresholding:
+        identity["thresholding"] = thresholding
+    if eedu:
+        identity["eedu"] = eedu
     return build_identity_key(identity)
 
 
@@ -335,7 +385,14 @@ def attach_phase_keys(job: dict[str, Any]) -> None:
     f03_key = build_f03_key(job, f02_key)
     f04_key = build_f04_key(job, f03_key)
     f05_key = build_f05_key(job, f04_key)
-    job.update({"f02_key": f02_key, "f03_key": f03_key, "f04_key": f04_key, "f05_key": f05_key})
+    f06_key = build_f06_key(job, f05_key)
+    job.update({
+        "f02_key": f02_key,
+        "f03_key": f03_key,
+        "f04_key": f04_key,
+        "f05_key": f05_key,
+        "f06_key": f06_key,
+    })
 
 
 def get_temporal_configs(cfg: dict[str, Any]) -> list[dict[str, Any]]:
@@ -390,6 +447,14 @@ def expand_jobs(cfg: dict[str, Any]) -> list[dict[str, Any]]:
     deduplication_modes = list(grid.get("deduplication_modes") or [base.get("deduplication_mode", "none")])
     jobs: list[dict[str, Any]] = []
 
+    def add_f05_config(identity: dict[str, Any]) -> None:
+        if isinstance(base.get("automl"), dict):
+            identity["automl"] = base["automl"]
+        if isinstance(base.get("training"), dict):
+            identity["training"] = base["training"]
+        if isinstance(base.get("evaluation"), dict):
+            identity["evaluation"] = base["evaluation"]
+
     for temporal in temporal_configs:
         for measure in grid["measures"]:
             for direction in grid["directions"]:
@@ -423,6 +488,7 @@ def expand_jobs(cfg: dict[str, Any]) -> list[dict[str, Any]]:
                                     "deduplication_mode": deduplication_mode,
                                     "seed": base["seed"],
                                 }
+                                add_f05_config(identity)
                                 jobs.append(make_job(identity, cfg, bands_id, bands, temporal))
 
     # TS jobs are deduplicated by effective threshold within each temporal config.
@@ -453,6 +519,7 @@ def expand_jobs(cfg: dict[str, Any]) -> list[dict[str, Any]]:
                                     "deduplication_mode": deduplication_mode,
                                     "seed": base["seed"],
                                 }
+                                add_f05_config(identity)
                                 job_key = build_job_key(identity)
                                 if job_key in seen_ts:
                                     continue
@@ -525,6 +592,16 @@ def is_newer_attempt(candidate: dict[str, Any], current: dict[str, Any] | None) 
 def load_job_attempts(runs_dir: Path = RUNS_DIR) -> tuple[set[str], dict[str, dict[str, Any]]]:
     completed: set[str] = set()
     failed_attempts: dict[str, dict[str, Any]] = {}
+
+    def completed_through_f06(row: dict[str, Any]) -> bool:
+        variant = str(row.get("f06_variant", "")).strip()
+        parent_f05 = str(row.get("f05_variant", "")).strip()
+        repo_text = str(row.get("repo_path", "")).strip()
+        if not variant or not parent_f05 or not repo_text:
+            return False
+        repo_path = Path(repo_text)
+        return variant_has_outputs_yaml(repo_path, "f06", variant) and variant_parent_matches(repo_path, "f06", variant, parent_f05)
+
     for manifest in sorted(runs_dir.glob("*/manifest.csv")):
         try:
             with manifest.open("r", encoding="utf-8", newline="") as f:
@@ -532,7 +609,7 @@ def load_job_attempts(runs_dir: Path = RUNS_DIR) -> tuple[set[str], dict[str, di
                     job_key = row.get("job_key")
                     if not job_key:
                         continue
-                    if row.get("status") == "COMPLETED":
+                    if row.get("status") == "COMPLETED" and completed_through_f06(row):
                         completed.add(job_key)
                     elif row.get("status") == "FAILED" and is_newer_attempt(row, failed_attempts.get(job_key)):
                         failed_attempts[job_key] = row
@@ -549,8 +626,42 @@ def load_completed_jobs(runs_dir: Path = RUNS_DIR) -> set[str]:
 def variant_dir_exists(repo_path: Path, phase: str, variant: str) -> bool:
     if not variant:
         return False
-    phase_name = PHASES[phase][0]
-    return (repo_path / "executions" / phase_name / variant).exists()
+    return any((repo_path / "executions" / phase_name / variant).exists() for phase_name in PHASE_NAME_ALIASES.get(phase, [PHASES[phase][0]]))
+
+
+def variant_dir(repo_path: Path, phase: str, variant: str) -> Path:
+    phase_names = PHASE_NAME_ALIASES.get(phase, [PHASES[phase][0]])
+    for phase_name in phase_names:
+        candidate = repo_path / "executions" / phase_name / variant
+        if candidate.exists():
+            return candidate
+    return repo_path / "executions" / phase_names[0] / variant
+
+
+def variant_has_outputs_yaml(repo_path: Path, phase: str, variant: str) -> bool:
+    return (variant_dir(repo_path, phase, variant) / "outputs.yaml").is_file()
+
+
+def variant_parent(repo_path: Path, phase: str, variant: str) -> str:
+    params_path = variant_dir(repo_path, phase, variant) / "params.yaml"
+    if not params_path.is_file():
+        return ""
+    try:
+        with params_path.open("r", encoding="utf-8") as f:
+            params = yaml.safe_load(f) or {}
+    except Exception:
+        return ""
+    return str(params.get("parent") or (params.get("parameters") or {}).get("parent_variant") or "").strip()
+
+
+def variant_parent_matches(repo_path: Path, phase: str, variant: str, expected_parent: str) -> bool:
+    if not expected_parent:
+        return False
+    return variant_parent(repo_path, phase, variant) == expected_parent
+
+
+def phase_output_marker(phase: str) -> str:
+    return str(Path(PHASES[phase][0]) / "outputs.yaml")
 
 
 def build_phase_cache(runs_dir: Path = RUNS_DIR) -> dict[str, dict[str, dict[str, Any]]]:
@@ -572,11 +683,20 @@ def build_phase_cache(runs_dir: Path = RUNS_DIR) -> dict[str, dict[str, dict[str
                     f03_key = row.get("f03_key") or build_f03_key(row, f02_key)
                     f04_key = row.get("f04_key") or build_f04_key(row, f03_key)
                     f05_key = row.get("f05_key") or build_f05_key(row, f04_key)
-                    keys = {"f02": f02_key, "f03": f03_key, "f04": f04_key, "f05": f05_key}
+                    f06_key = row.get("f06_key") or build_f06_key(row, f05_key)
+                    keys = {
+                        "f02": f02_key,
+                        "f03": f03_key,
+                        "f04": f04_key,
+                        "f05": f05_key,
+                        "f06": f06_key,
+                    }
 
                     for phase, key in keys.items():
                         variant = str(row.get(f"{phase}_variant", "")).strip()
                         if not key or not variant or not variant_dir_exists(repo_path, phase, variant):
+                            continue
+                        if phase == "f06" and not variant_parent_matches(repo_path, phase, variant, str(row.get("f05_variant", "")).strip()):
                             continue
                         phase_cache[phase][key] = {
                             "variant": variant,
@@ -659,6 +779,26 @@ def next_free_variant(repo_path: Path, phase_name: str, phase_digit: int) -> str
     return f"v{phase_digit}_{idx:04d}"
 
 
+def next_free_phase_variant(repo_path: Path, phase: str) -> str:
+    phase_name, phase_digit = PHASES[phase]
+    used: set[int] = set()
+    prefix = f"v{phase_digit}_"
+    for candidate_name in PHASE_NAME_ALIASES.get(phase, [phase_name]):
+        phase_dir = repo_path / "executions" / candidate_name
+        if not phase_dir.exists():
+            continue
+        for child in phase_dir.iterdir():
+            if not child.is_dir() or not child.name.startswith(prefix):
+                continue
+            suffix = child.name[len(prefix):]
+            if suffix.isdigit():
+                used.add(int(suffix))
+    idx = 0
+    while idx in used:
+        idx += 1
+    return f"v{phase_digit}_{idx:04d}"
+
+
 def format_command(command: str | list[str]) -> str:
     if isinstance(command, str):
         return command
@@ -668,25 +808,44 @@ def format_command(command: str | list[str]) -> str:
 def run_command(command: str | list[str], cwd: Path, log_path: Path) -> None:
     timestamp = datetime.now().isoformat(timespec="seconds")
     display_command = format_command(command)
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
     with log_path.open("a", encoding="utf-8") as log:
         log.write(f"\n[{timestamp}] COMMAND\n{display_command}\n")
-        proc = subprocess.run(
+        log.write(f"\n[{timestamp}] OUTPUT\n")
+        log.flush()
+        proc = subprocess.Popen(
             command,
             cwd=str(cwd),
             shell=isinstance(command, str),
             text=True,
-            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+            env=env,
         )
-        log.write(f"\n[{timestamp}] STDOUT\n{proc.stdout}\n")
-        log.write(f"\n[{timestamp}] STDERR\n{proc.stderr}\n")
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            log.write(line)
+            log.flush()
+        proc.wait()
         log.write(f"\n[{timestamp}] RETURN_CODE {proc.returncode}\n")
     if proc.returncode != 0:
         raise CommandError(f"Command failed with return code {proc.returncode}: {display_command}")
 
 
 def run_make(cwd: Path, log_path: Path, target: str, **kwargs: Any) -> None:
-    command = ["make", target]
-    command.extend(f"{key}={value}" for key, value in kwargs.items())
+    if GIT_BASH.exists():
+        args = ["make", target]
+        args.extend(f"{key}={value}" for key, value in kwargs.items())
+        shell_command = "cd " + shlex.quote(make_shell_path(str(cwd))) + " && " + " ".join(shlex.quote(str(arg)) for arg in args)
+        command = [str(GIT_BASH), "-lc", shell_command]
+    else:
+        command = ["make", target]
+        kwargs.setdefault("PYTHON_LOCAL", PYTHON_LOCAL_FOR_MAKE)
+        command.extend(f"{key}={value}" for key, value in kwargs.items())
     run_command(command, cwd, log_path)
 
 
@@ -695,6 +854,10 @@ def run_script5(cwd: Path, log_path: Path, variant: str) -> None:
     if F56_GPU_FOR_SCRIPT5:
         kwargs["F56_GPU"] = "true"
     run_make(cwd, log_path, "script5", **kwargs)
+
+
+def run_script6(cwd: Path, log_path: Path, variant: str) -> None:
+    run_make(cwd, log_path, "script6", VARIANT=variant)
 
 
 def log_retry(log_path: Path, message: str) -> None:
@@ -708,16 +871,24 @@ def reusable_previous_variant(job: dict[str, Any], phase: str, log_path: Path) -
     if not variant:
         return ""
 
-    phase_name = PHASES[phase][0]
-    variant_dir = job["repo_path"] / "executions" / phase_name / variant
-    if variant_dir.exists():
+    directory = variant_dir(job["repo_path"], phase, variant)
+    if directory.exists():
+        if phase == "f06":
+            expected_parent = str(previous.get("f05_variant") or job.get("f05_variant") or "").strip()
+            if expected_parent and not variant_parent_matches(job["repo_path"], phase, variant, expected_parent):
+                actual_parent = variant_parent(job["repo_path"], phase, variant) or "<unknown>"
+                log_warning(
+                    log_path,
+                    f"Previous FAILED attempt has {phase}_variant={variant}, but its parent is {actual_parent} "
+                    f"instead of {expected_parent}. Creating a new variant for this phase.",
+                )
+                return ""
         log_retry(log_path, f"Reusing existing {phase} variant {variant} from previous FAILED attempt.")
-        log_retry(log_path, f"Running script{PHASES[phase][1]} directly.")
         return variant
 
     log_warning(
         log_path,
-        f"Previous FAILED attempt has {phase}_variant={variant}, but variant directory does not exist: {variant_dir}. "
+        f"Previous FAILED attempt has {phase}_variant={variant}, but variant directory does not exist: {directory}. "
         "Creating a new variant for this phase.",
     )
     return ""
@@ -770,14 +941,17 @@ def initial_manifest_row(run_id: str, run_dir: Path, job: dict[str, Any]) -> dic
         "f03_variant": "",
         "f04_variant": "",
         "f05_variant": "",
+        "f06_variant": "",
         "f02_key": job.get("f02_key", ""),
         "f03_key": job.get("f03_key", ""),
         "f04_key": job.get("f04_key", ""),
         "f05_key": job.get("f05_key", ""),
+        "f06_key": job.get("f06_key", ""),
         "f02_reused": False,
         "f03_reused": False,
         "f04_reused": False,
         "f05_reused": False,
+        "f06_reused": False,
         "started_at": datetime.now().isoformat(timespec="seconds"),
         "finished_at": "",
         "repo_path": str(job["repo_path"]),
@@ -818,6 +992,22 @@ def load_outputs_config(config: dict[str, Any]) -> dict[str, Any]:
     merged["always_copy"] = {str(name) for name in merged["always_copy"]}
     merged["max_file_bytes"] = int(float(merged.get("max_file_mb", 10)) * 1024 * 1024)
     return merged
+
+
+def configure_phases_from_outputs(outputs_config: dict[str, Any]) -> None:
+    for phase, phase_cfg in (outputs_config.get("phases") or {}).items():
+        if phase not in PHASES or not isinstance(phase_cfg, dict):
+            continue
+        phase_name = str(phase_cfg.get("phase_name") or "").strip()
+        if not phase_name:
+            continue
+        _, phase_digit = PHASES[phase]
+        default_name = DEFAULT_PHASES.get(phase, (phase_name, phase_digit))[0]
+        aliases = [phase_name]
+        if default_name not in aliases:
+            aliases.append(default_name)
+        PHASES[phase] = (phase_name, phase_digit)
+        PHASE_NAME_ALIASES[phase] = aliases
 
 
 def should_copy_file(path: Path, outputs_config: dict[str, Any]) -> bool:
@@ -866,6 +1056,7 @@ def write_manifest_row_yaml(row_or_job: dict[str, Any], output_dir: Path) -> Non
         "f03": row_or_job.get("f03_variant", ""),
         "f04": row_or_job.get("f04_variant", ""),
         "f05": row_or_job.get("f05_variant", ""),
+        "f06": row_or_job.get("f06_variant", ""),
     }
     payload = dict(row_or_job)
     payload["variants"] = variants
@@ -899,6 +1090,8 @@ def copy_configured_outputs(row_or_job: dict[str, Any], outputs_config: dict[str
             continue
 
         src_dir = repo_path / "executions" / str(phase_name) / str(variant)
+        if not src_dir.exists() and phase in PHASE_NAME_ALIASES:
+            src_dir = variant_dir(repo_path, str(phase), str(variant))
         if not src_dir.exists():
             log_warning(log_path, f"Variant output directory not found: {src_dir}")
             continue
@@ -930,6 +1123,83 @@ def mark_phase(row: dict[str, Any], phase: str, variant: str, reused: bool, mani
     append_or_update_manifest_row(manifest_path, rows, row)
 
 
+def variant5_args(base: dict[str, Any], variant: str, parent_variant: str, job: dict[str, Any]) -> dict[str, Any]:
+    args: dict[str, Any] = {
+        "VARIANT": variant,
+        "PARENT": parent_variant,
+        "MODEL_FAMILY": base["model_family"],
+        "IMBALANCE_STRATEGY": base["imbalance_strategy"],
+        "IMBALANCE_MAX_MAJ": base["imbalance_max_maj"],
+        "DEDUP_MODE": job.get("deduplication_mode", "none"),
+        "SEED": base["seed"],
+    }
+    if isinstance(base.get("automl"), dict):
+        args["AUTOML"] = json_dumps_compact(base["automl"])
+    if isinstance(base.get("training"), dict):
+        args["TRAINING"] = json_dumps_compact(base["training"])
+    if isinstance(base.get("evaluation"), dict):
+        args["EVALUATION"] = json_dumps_compact(base["evaluation"])
+    return args
+
+
+def use_previous_variant(
+    job: dict[str, Any],
+    phase: str,
+    log_path: Path,
+    row: dict[str, Any],
+    manifest_path: Path,
+    rows: list[dict[str, Any]],
+    phase_cache: dict[str, dict[str, dict[str, Any]]],
+    run_phase: Any,
+) -> str:
+    variant = reusable_previous_variant(job, phase, log_path)
+    if not variant:
+        return ""
+
+    has_outputs_yaml = variant_has_outputs_yaml(job["repo_path"], phase, variant)
+    mark_phase(row, phase, variant, has_outputs_yaml, manifest_path, rows)
+    if has_outputs_yaml:
+        log_retry(log_path, f"Found {phase_output_marker(phase)} for {phase} variant {variant}; skipping script{PHASES[phase][1]}.")
+    else:
+        log_retry(log_path, f"Existing {phase} variant {variant} has no outputs.yaml; running script{PHASES[phase][1]} directly.")
+        run_phase(variant)
+    cache_completed_phase(phase_cache, phase, job[f"{phase}_key"], variant, row)
+    return variant
+
+
+def ensure_f06_variant(
+    job: dict[str, Any],
+    repo: Path,
+    log_path: Path,
+    row: dict[str, Any],
+    manifest_path: Path,
+    rows: list[dict[str, Any]],
+    phase_cache: dict[str, dict[str, dict[str, Any]]],
+    parent_f05_variant: str,
+) -> str:
+    v6 = use_previous_variant(
+        job, "f06", log_path, row, manifest_path, rows, phase_cache,
+        lambda variant: run_script6(repo, log_path, variant),
+    )
+    if not v6:
+        v6 = reusable_cached_variant(job, phase_cache, "f06", log_path)
+    if v6 and row.get("f06_variant") != v6:
+        mark_phase(row, "f06", v6, True, manifest_path, rows)
+    elif not v6:
+        v6 = next_free_phase_variant(repo, "f06")
+        mark_phase(row, "f06", v6, False, manifest_path, rows)
+        run_make(
+            repo,
+            log_path,
+            "variant6",
+            VARIANT=v6,
+            PARENT=parent_f05_variant,
+        )
+        run_script6(repo, log_path, v6)
+        cache_completed_phase(phase_cache, "f06", job["f06_key"], v6, row)
+    return v6
+
+
 def execute_ts_job(
     job: dict[str, Any],
     run_dir: Path,
@@ -947,33 +1217,31 @@ def execute_ts_job(
     threshold = job["effective_threshold"]
     name = safe_name(f"{measure}_{direction}_{compact_number(threshold)}")
 
-    v2 = reusable_previous_variant(job, "f02", log_path)
-    if v2:
-        mark_phase(row, "f02", v2, False, manifest_path, rows)
-        run_make(repo, log_path, "script2", VARIANT=v2)
-        cache_completed_phase(phase_cache, "f02", job["f02_key"], v2, row)
-    else:
+    v2 = use_previous_variant(
+        job, "f02", log_path, row, manifest_path, rows, phase_cache,
+        lambda variant: run_make(repo, log_path, "script2", VARIANT=variant),
+    )
+    if not v2:
         v2 = reusable_cached_variant(job, phase_cache, "f02", log_path)
     if v2 and row.get("f02_variant") != v2:
         mark_phase(row, "f02", v2, True, manifest_path, rows)
     elif not v2:
-        v2 = next_free_variant(repo, "f02_events", 2)
+        v2 = next_free_phase_variant(repo, "f02")
         mark_phase(row, "f02", v2, False, manifest_path, rows)
         run_make(repo, log_path, "variant2", VARIANT=v2, PARENT=job["parent_f01"], MEASURE=measure)
         run_make(repo, log_path, "script2", VARIANT=v2)
         cache_completed_phase(phase_cache, "f02", job["f02_key"], v2, row)
 
-    v3 = reusable_previous_variant(job, "f03", log_path)
-    if v3:
-        mark_phase(row, "f03", v3, False, manifest_path, rows)
-        run_make(repo, log_path, "script3", VARIANT=v3)
-        cache_completed_phase(phase_cache, "f03", job["f03_key"], v3, row)
-    else:
+    v3 = use_previous_variant(
+        job, "f03", log_path, row, manifest_path, rows, phase_cache,
+        lambda variant: run_make(repo, log_path, "script3", VARIANT=variant),
+    )
+    if not v3:
         v3 = reusable_cached_variant(job, phase_cache, "f03", log_path)
     if v3 and row.get("f03_variant") != v3:
         mark_phase(row, "f03", v3, True, manifest_path, rows)
     elif not v3:
-        v3 = next_free_variant(repo, "f03_windows", 3)
+        v3 = next_free_phase_variant(repo, "f03")
         mark_phase(row, "f03", v3, False, manifest_path, rows)
         run_make(
             repo,
@@ -990,17 +1258,16 @@ def execute_ts_job(
         run_make(repo, log_path, "script3", VARIANT=v3)
         cache_completed_phase(phase_cache, "f03", job["f03_key"], v3, row)
 
-    v4 = reusable_previous_variant(job, "f04", log_path)
-    if v4:
-        mark_phase(row, "f04", v4, False, manifest_path, rows)
-        run_make(repo, log_path, "script4", VARIANT=v4)
-        cache_completed_phase(phase_cache, "f04", job["f04_key"], v4, row)
-    else:
+    v4 = use_previous_variant(
+        job, "f04", log_path, row, manifest_path, rows, phase_cache,
+        lambda variant: run_make(repo, log_path, "script4", VARIANT=variant),
+    )
+    if not v4:
         v4 = reusable_cached_variant(job, phase_cache, "f04", log_path)
     if v4 and row.get("f04_variant") != v4:
         mark_phase(row, "f04", v4, True, manifest_path, rows)
     elif not v4:
-        v4 = next_free_variant(repo, "f04_targets", 4)
+        v4 = next_free_phase_variant(repo, "f04")
         mark_phase(row, "f04", v4, False, manifest_path, rows)
         run_make(
             repo,
@@ -1015,32 +1282,22 @@ def execute_ts_job(
         run_make(repo, log_path, "script4", VARIANT=v4)
         cache_completed_phase(phase_cache, "f04", job["f04_key"], v4, row)
 
-    v5 = reusable_previous_variant(job, "f05", log_path)
-    if v5:
-        mark_phase(row, "f05", v5, False, manifest_path, rows)
-        run_script5(repo, log_path, v5)
-        cache_completed_phase(phase_cache, "f05", job["f05_key"], v5, row)
-    else:
+    v5 = use_previous_variant(
+        job, "f05", log_path, row, manifest_path, rows, phase_cache,
+        lambda variant: run_script5(repo, log_path, variant),
+    )
+    if not v5:
         v5 = reusable_cached_variant(job, phase_cache, "f05", log_path)
     if v5 and row.get("f05_variant") != v5:
         mark_phase(row, "f05", v5, True, manifest_path, rows)
     elif not v5:
-        v5 = next_free_variant(repo, "f05_modeling", 5)
+        v5 = next_free_phase_variant(repo, "f05")
         mark_phase(row, "f05", v5, False, manifest_path, rows)
-        run_make(
-            repo,
-            log_path,
-            "variant5",
-            VARIANT=v5,
-            PARENT=v4,
-            MODEL_FAMILY=base["model_family"],
-            IMBALANCE_STRATEGY=base["imbalance_strategy"],
-            IMBALANCE_MAX_MAJ=base["imbalance_max_maj"],
-            DEDUP_MODE=job.get("deduplication_mode", "none"),
-            SEED=base["seed"],
-        )
+        run_make(repo, log_path, "variant5", **variant5_args(base, v5, v4, job))
         run_script5(repo, log_path, v5)
         cache_completed_phase(phase_cache, "f05", job["f05_key"], v5, row)
+
+    ensure_f06_variant(job, repo, log_path, row, manifest_path, rows, phase_cache, v5)
 
 
 def execute_event_based_job(
@@ -1063,17 +1320,16 @@ def execute_event_based_job(
     bands_id = job["bands_id"]
     bands_json = json_dumps_compact(bands)
 
-    v2 = reusable_previous_variant(job, "f02", log_path)
-    if v2:
-        mark_phase(row, "f02", v2, False, manifest_path, rows)
-        run_make(repo, log_path, "script2", VARIANT=v2)
-        cache_completed_phase(phase_cache, "f02", job["f02_key"], v2, row)
-    else:
+    v2 = use_previous_variant(
+        job, "f02", log_path, row, manifest_path, rows, phase_cache,
+        lambda variant: run_make(repo, log_path, "script2", VARIANT=variant),
+    )
+    if not v2:
         v2 = reusable_cached_variant(job, phase_cache, "f02", log_path)
     if v2 and row.get("f02_variant") != v2:
         mark_phase(row, "f02", v2, True, manifest_path, rows)
     elif not v2:
-        v2 = next_free_variant(repo, "f02_events", 2)
+        v2 = next_free_phase_variant(repo, "f02")
         mark_phase(row, "f02", v2, False, manifest_path, rows)
         variant2_args = {
             "VARIANT": v2,
@@ -1090,17 +1346,16 @@ def execute_event_based_job(
         run_make(repo, log_path, "script2", VARIANT=v2)
         cache_completed_phase(phase_cache, "f02", job["f02_key"], v2, row)
 
-    v3 = reusable_previous_variant(job, "f03", log_path)
-    if v3:
-        mark_phase(row, "f03", v3, False, manifest_path, rows)
-        run_make(repo, log_path, "script3", VARIANT=v3)
-        cache_completed_phase(phase_cache, "f03", job["f03_key"], v3, row)
-    else:
+    v3 = use_previous_variant(
+        job, "f03", log_path, row, manifest_path, rows, phase_cache,
+        lambda variant: run_make(repo, log_path, "script3", VARIANT=variant),
+    )
+    if not v3:
         v3 = reusable_cached_variant(job, phase_cache, "f03", log_path)
     if v3 and row.get("f03_variant") != v3:
         mark_phase(row, "f03", v3, True, manifest_path, rows)
     elif not v3:
-        v3 = next_free_variant(repo, "f03_windows", 3)
+        v3 = next_free_phase_variant(repo, "f03")
         mark_phase(row, "f03", v3, False, manifest_path, rows)
         run_make(
             repo,
@@ -1117,19 +1372,18 @@ def execute_event_based_job(
         run_make(repo, log_path, "script3", VARIANT=v3)
         cache_completed_phase(phase_cache, "f03", job["f03_key"], v3, row)
 
-    v4 = reusable_previous_variant(job, "f04", log_path)
-    if v4:
-        mark_phase(row, "f04", v4, False, manifest_path, rows)
-        run_make(repo, log_path, "script4", VARIANT=v4)
-        cache_completed_phase(phase_cache, "f04", job["f04_key"], v4, row)
-    else:
+    v4 = use_previous_variant(
+        job, "f04", log_path, row, manifest_path, rows, phase_cache,
+        lambda variant: run_make(repo, log_path, "script4", VARIANT=variant),
+    )
+    if not v4:
         v4 = reusable_cached_variant(job, phase_cache, "f04", log_path)
     if v4 and row.get("f04_variant") != v4:
         mark_phase(row, "f04", v4, True, manifest_path, rows)
     elif not v4:
         target_events = resolve_target_events(repo, v2, v3, measure, direction, threshold, bands, bands_id)
         events_json = json_dumps_compact(target_events)
-        v4 = next_free_variant(repo, "f04_targets", 4)
+        v4 = next_free_phase_variant(repo, "f04")
         mark_phase(row, "f04", v4, False, manifest_path, rows)
         name = safe_name(f"{measure}_{direction}_{compact_number(threshold)}_{bands_id}")
         run_make(
@@ -1145,32 +1399,22 @@ def execute_event_based_job(
         run_make(repo, log_path, "script4", VARIANT=v4)
         cache_completed_phase(phase_cache, "f04", job["f04_key"], v4, row)
 
-    v5 = reusable_previous_variant(job, "f05", log_path)
-    if v5:
-        mark_phase(row, "f05", v5, False, manifest_path, rows)
-        run_script5(repo, log_path, v5)
-        cache_completed_phase(phase_cache, "f05", job["f05_key"], v5, row)
-    else:
+    v5 = use_previous_variant(
+        job, "f05", log_path, row, manifest_path, rows, phase_cache,
+        lambda variant: run_script5(repo, log_path, variant),
+    )
+    if not v5:
         v5 = reusable_cached_variant(job, phase_cache, "f05", log_path)
     if v5 and row.get("f05_variant") != v5:
         mark_phase(row, "f05", v5, True, manifest_path, rows)
     elif not v5:
-        v5 = next_free_variant(repo, "f05_modeling", 5)
+        v5 = next_free_phase_variant(repo, "f05")
         mark_phase(row, "f05", v5, False, manifest_path, rows)
-        run_make(
-            repo,
-            log_path,
-            "variant5",
-            VARIANT=v5,
-            PARENT=v4,
-            MODEL_FAMILY=base["model_family"],
-            IMBALANCE_STRATEGY=base["imbalance_strategy"],
-            IMBALANCE_MAX_MAJ=base["imbalance_max_maj"],
-            DEDUP_MODE=job.get("deduplication_mode", "none"),
-            SEED=base["seed"],
-        )
+        run_make(repo, log_path, "variant5", **variant5_args(base, v5, v4, job))
         run_script5(repo, log_path, v5)
         cache_completed_phase(phase_cache, "f05", job["f05_key"], v5, row)
+
+    ensure_f06_variant(job, repo, log_path, row, manifest_path, rows, phase_cache, v5)
 
 
 def execute_events_job(
@@ -1283,6 +1527,257 @@ def resolve_target_events(
     )
 
 
+PIPELINE_EXPORT_ORDER = ["ts", "events", "uniEvents"]
+EXPORT_F01_VARIANT = "v1_0000"
+EXPORT_F01_PHASE_NAME = "f01_explore"
+EXPORT_F01_PARAMETERS = {
+    "raw_path": "data/raw.csv",
+    "cleaning": "basic",
+    "nan_values": [-999999],
+    "error_values": {
+        "MG-LV-MSB_AC_Voltage": [0.0],
+        "Receiving_Point_AC_Voltage": [0.0],
+        "Island_mode_MCCB_AC_Voltage": [0.0],
+        "Island_mode_MCCB_Frequency": [-327.679993, 0.0],
+        "MG-LV-MSB_Frequency": [-327.679993, 0.0],
+        "Outlet_Temperature": [-52.5],
+        "Inlet_Temperature_of_Chilled_Water": [-52.5, -52.400002, -52.299999],
+    },
+}
+
+
+def build_variant_payload(variant: str, parent: str, params: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        "variant": variant,
+        "params": params or {},
+        "parent": parent,
+        "selected_runner": "GithubActions",
+    }
+
+
+def build_f01_payload() -> dict[str, Any]:
+    return {
+        "phase": EXPORT_F01_PHASE_NAME,
+        "variant": EXPORT_F01_VARIANT,
+        "parent": None,
+        "parameters": EXPORT_F01_PARAMETERS,
+        "selected_runner": "GithubActions",
+    }
+
+
+class NoAliasDumper(yaml.SafeDumper):
+    def ignore_aliases(self, data: Any) -> bool:
+        return True
+
+
+def dump_yaml_no_aliases(data: Any, path: Path) -> None:
+    with path.open("w", encoding="utf-8") as f:
+        yaml.dump(data, f, Dumper=NoAliasDumper, sort_keys=False, allow_unicode=True)
+
+
+def build_f02_params(job: dict[str, Any]) -> dict[str, Any]:
+    pipeline = job["pipeline"]
+    if pipeline == "ts":
+        return {"measure": job["measure"]}
+    params: dict[str, Any] = {
+        "event_strategy": field_value(job, "event_strategy"),
+        "bands": list(job.get("bands") or []),
+        "nan_mode": field_value(job, "nan_mode"),
+    }
+    if pipeline == "uniEvents":
+        params = {"measure": job["measure"], **params}
+    return params
+
+
+def build_f03_params(job: dict[str, Any]) -> dict[str, Any]:
+    temporal = job["temporal"]
+    return {
+        "OW": temporal["OW"],
+        "LT": temporal["LT"],
+        "PW": temporal["PW"],
+        "window_strategy": temporal["window_strategy"],
+        "nan_mode": temporal["nan_mode"],
+    }
+
+
+def transition_event_names(job: dict[str, Any]) -> list[str]:
+    measure = str(job["measure"])
+    direction = str(job["direction"])
+    threshold = job["effective_threshold"]
+    threshold_text = compact_number(threshold)
+    bands = [float(v) for v in (job.get("bands") or [])]
+    edges = [0.0, *bands]
+    prefixes = [measure]
+    if job["pipeline"] == "events":
+        prefixes.append(f"{measure}_Set_Response")
+
+    events: list[str] = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        include = hi <= float(threshold) if direction == "high" else lo >= float(threshold)
+        if not include:
+            continue
+        source = f"{compact_number(lo)}_{compact_number(hi)}"
+        target = f"{threshold_text}_100" if direction == "high" else f"0_{threshold_text}"
+        events.extend(f"{prefix}_{source}-to-{target}" for prefix in prefixes)
+    return events
+
+
+def build_f04_params(job: dict[str, Any], parent_v3: str) -> dict[str, Any]:
+    _ = parent_v3
+    threshold = job["effective_threshold"]
+    direction = job["direction"]
+    if job["pipeline"] == "ts":
+        return {
+            "threshold": threshold,
+            "direction": direction,
+            "name": safe_name(f"{job['measure']}_{direction}_{compact_number(threshold)}"),
+        }
+    return {
+        "name": safe_name(f"{job['measure']}_{direction}_{compact_number(threshold)}_{job['bands_id']}"),
+        "operator": "OR",
+        "events": transition_event_names(job),
+    }
+
+
+def build_f05_params(job: dict[str, Any]) -> dict[str, Any]:
+    params: dict[str, Any] = {"model_family": field_value(job, "model_family")}
+    automl = field_value(job, "automl", {}) or {}
+    search_space = field_value(job, "search_space", {}) or {}
+    training = field_value(job, "training", {}) or {}
+    evaluation = field_value(job, "evaluation", {}) or {}
+    if automl:
+        params["automl"] = automl
+    if search_space:
+        params["search_space"] = search_space
+    if training:
+        params["training"] = training
+    if evaluation:
+        params["evaluation"] = evaluation
+    params["imbalance_strategy"] = field_value(job, "imbalance_strategy")
+    params["imbalance_max_majority_samples"] = field_value(job, "imbalance_max_maj")
+    params["deduplication_mode"] = job.get("deduplication_mode", "none")
+    params["seed"] = field_value(job, "seed")
+    return params
+
+
+def build_f06_params(job: dict[str, Any]) -> dict[str, Any]:
+    _ = job
+    return {}
+
+
+def export_variant_name(counters: dict[str, int], phase: str) -> str:
+    _, phase_digit = PHASES[phase]
+    counters[phase] = counters.get(phase, 0) + 1
+    return f"v{phase_digit}_{counters[phase]:04d}"
+
+
+def export_pipeline_params_yamls(
+    cfg: dict[str, Any],
+    jobs: list[dict[str, Any]],
+    export_dir: Path,
+    phase_cache: dict[str, dict[str, dict[str, Any]]] | None = None,
+) -> None:
+    _ = phase_cache
+    export_dir.mkdir(parents=True, exist_ok=True)
+    pipelines = [pipeline for pipeline in PIPELINE_EXPORT_ORDER if pipeline in set(cfg.get("pipelines") or [])]
+    payloads: dict[str, dict[str, Any]] = {}
+    assigned: dict[str, dict[str, dict[str, str]]] = {}
+    counters: dict[str, dict[str, int]] = {}
+    seen_variants: dict[str, dict[str, set[str]]] = {}
+
+    for pipeline in pipelines:
+        payloads[pipeline] = {
+            "pipeline": pipeline,
+            "repo_path": str(cfg["repos"][pipeline]).replace("\\", "/"),
+            "selected_runner": "GithubActions",
+            "variants": {"f01": [build_f01_payload()], **{phase: [] for phase in PHASES}},
+            "jobs": [],
+        }
+        assigned[pipeline] = {phase: {} for phase in PHASES}
+        counters[pipeline] = {}
+        seen_variants[pipeline] = {phase: set() for phase in PHASES}
+
+    manifest_rows: list[dict[str, Any]] = []
+    for job in jobs:
+        pipeline = job["pipeline"]
+        if pipeline not in payloads:
+            continue
+        payload = payloads[pipeline]
+        phase_variants: dict[str, str] = {}
+
+        for phase in ["f02", "f03", "f04", "f05", "f06"]:
+            phase_key = str(job.get(f"{phase}_key") or "")
+            phase_map = assigned[pipeline][phase]
+            if phase_key not in phase_map:
+                phase_map[phase_key] = export_variant_name(counters[pipeline], phase)
+            phase_variants[phase] = phase_map[phase_key]
+
+        phase_specs = {
+            "f02": (EXPORT_F01_VARIANT, build_f02_params(job)),
+            "f03": (phase_variants["f02"], build_f03_params(job)),
+            "f04": (phase_variants["f03"], build_f04_params(job, phase_variants["f03"])),
+            "f05": (phase_variants["f04"], build_f05_params(job)),
+            "f06": (phase_variants["f05"], build_f06_params(job)),
+        }
+        for phase, (parent, params) in phase_specs.items():
+            variant = phase_variants[phase]
+            if variant in seen_variants[pipeline][phase]:
+                continue
+            payload["variants"][phase].append(build_variant_payload(variant, parent, params))
+            seen_variants[pipeline][phase].add(variant)
+
+        payload["jobs"].append({
+            "job_key": job["job_key"],
+            "measure": job["measure"],
+            "direction": job["direction"],
+            "temporal_id": job["temporal_id"],
+            "bands_id": job.get("bands_id", ""),
+            "effective_threshold": job["effective_threshold"],
+            "variants": {"f01": EXPORT_F01_VARIANT, **phase_variants},
+        })
+        manifest_rows.append({
+            "pipeline": pipeline,
+            "job_key": job["job_key"],
+            "measure": job["measure"],
+            "direction": job["direction"],
+            "temporal_id": job["temporal_id"],
+            "bands_id": job.get("bands_id", ""),
+            "effective_threshold": job["effective_threshold"],
+            "f02_variant": phase_variants["f02"],
+            "f03_variant": phase_variants["f03"],
+            "f04_variant": phase_variants["f04"],
+            "f05_variant": phase_variants["f05"],
+            "f06_variant": phase_variants["f06"],
+            "yaml_path": str((export_dir / f"{pipeline}.yaml").resolve()),
+        })
+
+    for pipeline, payload in payloads.items():
+        dump_yaml_no_aliases(payload, export_dir / f"{pipeline}.yaml")
+
+    manifest_columns = [
+        "pipeline",
+        "job_key",
+        "measure",
+        "direction",
+        "temporal_id",
+        "bands_id",
+        "effective_threshold",
+        "f02_variant",
+        "f03_variant",
+        "f04_variant",
+        "f05_variant",
+        "f06_variant",
+        "yaml_path",
+    ]
+    with (export_dir / "manifest.csv").open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=manifest_columns)
+        writer.writeheader()
+        for row in manifest_rows:
+            writer.writerow(row)
+
+    print(f"Exported params YAMLs to {export_dir}")
+
+
 def execute_job(
     job: dict[str, Any],
     run_id: str,
@@ -1318,11 +1813,35 @@ def execute_job(
         append_or_update_manifest_row(manifest_path, rows, row)
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run or export the comparison experiment plan.")
+    parser.add_argument(
+        "--export-params-yamls",
+        action="store_true",
+        help="Export per-pipeline variant params YAMLs without running make or scripts.",
+    )
+    parser.add_argument(
+        "--export-dir",
+        default="exported_params",
+        help="Directory for --export-params-yamls outputs. Default: exported_params",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     cfg = load_config()
     validate_config(cfg)
-    jobs = expand_jobs(cfg)
     outputs_config = load_outputs_config(cfg)
+    configure_phases_from_outputs(outputs_config)
+    jobs = expand_jobs(cfg)
+    if args.export_params_yamls:
+        export_dir = Path(args.export_dir)
+        if not export_dir.is_absolute():
+            export_dir = REPO_ROOT / export_dir
+        export_pipeline_params_yamls(cfg, jobs, export_dir, phase_cache=None)
+        return
+
     completed, failed_attempts = load_job_attempts()
     phase_cache = build_phase_cache()
     pending = [job for job in jobs if job["job_key"] not in completed]

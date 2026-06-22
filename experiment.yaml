@@ -18,34 +18,46 @@ base:
   # imbalance_strategy: auto
   imbalance_max_maj: 20000
   seed: 42
+  automl:
+    enabled: true
+    max_trials: 3
+    seed: 42
+  training:
+    epochs: 5
+    max_samples: null
+  evaluation:
+    val_max_samples: 20000
+    test_max_samples: 20000
 
 
 grid:
   measures:
-    - Battery_Active_Power
+    - GE_Active_Power
+    - Outlet_Temperature
+    - PVPCS_Active_Power
+    - MG-LV-MSB_AC_Voltage
+    - Inlet_Temperature_of_Chilled_Water
 
   deduplication_modes: 
-    - all
     - none
 
   directions:
     - high
+    - low
 
   temporal_configs:
-    - id: ow600_lt10_pw100
-      OW: 600
+    - id: ow50_lt10_pw10
+      OW: 50
       LT: 10
-      PW: 100
+      PW: 10
       window_strategy: synchro
       nan_mode: discard
 
   event_band_sets:
     - id: coarse_10
       values: [10, 20, 30, 40, 50, 60, 70, 80, 90]
-    - id: dense_mid
-      values: [10, 25, 50, 75, 90]
-    # - id: fine_4
-    #   values: [20, 40, 60, 80]
+    - id: fine_4
+      values: [20, 40, 60, 80]
 
 pipelines:
   - ts
@@ -71,6 +83,9 @@ outputs:
     f05:
       phase_name: f05_modeling
       variant_column: f05_variant
+    f06:
+      phase_name: f06_quantization
+      variant_column: f06_variant
 
   destination_template: "runs/{run_id}/outputs/{pipeline}/{job_key}/{phase}"
 

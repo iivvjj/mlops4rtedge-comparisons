@@ -1,0 +1,1282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MLOps4RT-Edge Comparison Report</title>
+  <style>
+    :root {
+      --ink: #1f2933; --muted: #687789; --line: #d8e0e8; --paper: #ffffff; --bg: #f5f7fa;
+      --ts: #e8f1fb; --ts-border: #8eb6df; --events: #e8f6ee; --events-border: #8ac6a3;
+      --uniEvents: #fff1e3; --uniEvents-border: #e3aa6f;
+    }
+    body { margin: 0; font-family: Arial, sans-serif; color: var(--ink); background: var(--bg); }
+    header { padding: 28px 34px; background: #ffffff; border-bottom: 1px solid var(--line); }
+    h1 { margin: 0 0 6px; font-size: 28px; }
+    h2, h3, h4, h5 { color: #102a43; }
+    .muted { color: var(--muted); }
+    main { padding: 24px 34px 42px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 18px; }
+    .stat, .mini-stat { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+    .stat span, .mini-stat span { color: var(--muted); display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .stat strong, .mini-stat strong { display: block; font-size: 25px; margin-top: 5px; }
+    .mini-stat.ts { background: var(--ts); border-color: var(--ts-border); }
+    .mini-stat.events { background: var(--events); border-color: var(--events-border); }
+    .mini-stat.uniEvents { background: var(--uniEvents); border-color: var(--uniEvents-border); }
+    .rankings { margin-top: 24px; }
+    .ranking { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 16px; overflow-x: auto; }
+    .comparison-block { margin-top: 26px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px; box-shadow: 0 8px 22px rgba(20, 45, 70, .06); }
+    .block-title h2 { margin: 0; font-size: 21px; }
+    .block-title h2 span { margin-left: 8px; color: var(--muted); font-weight: 600; }
+    .block-title p { margin: 8px 0 0; color: var(--muted); }
+    .pipeline-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+    .pipeline-column { border-radius: 9px; border: 1px solid var(--line); padding: 12px; min-height: 160px; }
+    .pipeline-column.ts { background: var(--ts); border-color: var(--ts-border); }
+    .pipeline-column.events { background: var(--events); border-color: var(--events-border); }
+    .pipeline-column.uniEvents { background: var(--uniEvents); border-color: var(--uniEvents-border); }
+    .column-title { font-weight: 700; margin-bottom: 10px; }
+    .model-card { background: rgba(255,255,255,.88); border: 1px solid rgba(30,60,90,.14); border-radius: 8px; padding: 12px; margin-bottom: 12px; box-shadow: 0 4px 12px rgba(20, 45, 70, .08); }
+    .card-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+    .card-head h5 { margin: 0; font-size: 15px; }
+    .card-head p, .bands { margin: 4px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .status, .badge { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 3px 8px; font-size: 11px; white-space: nowrap; }
+    .badge.best { display: inline-block; margin: 9px 0; background: #fff7cc; border-color: #e2c044; font-weight: 700; }
+    .main-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+    .metric { background: #fff; border: 1px solid var(--line); border-radius: 7px; padding: 9px; }
+    .metric span { display: block; color: var(--muted); font-size: 11px; }
+    .metric strong { display: block; font-size: 18px; margin-top: 3px; }
+    .f06-section { background: #f8fbff; border: 1px solid var(--line); border-radius: 7px; margin: 10px 0; padding: 9px; }
+    .f06-section h6 { margin: 0 0 8px; color: #102a43; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .f06-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; font-size: 12px; }
+    .f06-grid span { display: block; color: var(--muted); }
+    .f06-grid strong { overflow-wrap: anywhere; }
+    .criterion-analysis { margin-top: 24px; }
+    .criterion-details { border-top: 1px solid var(--line); padding-top: 9px; }
+    .criterion-note { font-size: 12px; line-height: 1.4; }
+    .criterion-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+    .criterion-card { background: #fff; border: 1px solid var(--line); border-radius: 7px; padding: 9px; }
+    .criterion-title { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: #102a43; }
+    .criterion-badge { border: 1px solid #b8c2cc; background: #f4f7fb; border-radius: 999px; padding: 2px 6px; font-size: 10px; white-space: nowrap; }
+    .criterion-values { display: grid; gap: 4px; margin-top: 8px; font-size: 11px; }
+    .criterion-values div { display: flex; justify-content: space-between; gap: 8px; }
+    .criterion-values span, .criterion-delta span { color: var(--muted); }
+    .criterion-deltas { border-top: 1px dashed var(--line); margin-top: 7px; padding-top: 6px; display: grid; gap: 4px; font-size: 11px; }
+    .criterion-delta { display: flex; justify-content: space-between; gap: 8px; }
+    .criterion-delta.positive strong { color: #13795b; }
+    .criterion-delta.negative strong { color: #b45309; }
+    .kv-grid, .trace { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; font-size: 12px; }
+    .kv-grid span, .trace span { display: block; color: var(--muted); }
+    .kv-grid strong, .trace strong { overflow-wrap: anywhere; }
+    details { margin-top: 10px; }
+    summary { cursor: pointer; color: #334e68; font-weight: 700; font-size: 12px; }
+    .empty { background: rgba(255,255,255,.7); border: 1px dashed rgba(30,60,90,.25); color: var(--muted); border-radius: 8px; padding: 24px 12px; text-align: center; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; background: #fff; }
+    th, td { border: 1px solid var(--line); padding: 7px; text-align: left; vertical-align: top; }
+    th { background: #eef2f7; }
+    .path { font-family: Consolas, monospace; overflow-wrap: anywhere; }
+    @media (max-width: 1050px) { .pipeline-grid, .criterion-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>MLOps4RT-Edge Comparison Report</h1>
+    <p class="muted">Generated at 2026-06-03T12:18:42 from registry/model_index.yaml</p>
+    <div class="summary-grid">
+      <div class="stat"><span>Total models</span><strong>15</strong></div>
+      <div class="stat"><span>Measures</span><strong>2</strong></div>
+      <div class="stat"><span>Target groups</span><strong>4</strong></div>
+      <div class="mini-stat ts"><span>TS</span><strong>4</strong></div><div class="mini-stat events"><span>Events</span><strong>5</strong></div><div class="mini-stat uniEvents"><span>UniEvents</span><strong>6</strong></div>
+    </div>
+  </header>
+  <main>
+    <section class="rankings">
+      <h2>Global Rankings</h2>
+      <div class="ranking"><h3>Top 10 by test_f1</h3><table><thead><tr><th>measure</th><th>direction</th><th>effective_threshold</th><th>temporal_config_id</th><th>pipeline</th><th>bands_id</th><th>deduplication_mode</th><th>f05_variant</th><th>test_precision_effective</th><th>test_recall_effective</th><th>test_fn_effective</th><th>test_pr_auc_effective</th><th>test_f1_effective</th><th>decision_threshold_effective</th><th>threshold_source_effective</th><th>threshold_policy_effective</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0028</td><td class="">0.718723</td><td class="">0.941426</td><td class="">262</td><td class="">0.906494</td><td class="">0.815137</td><td class="">0.221686</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/7e24fa90ec4c</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0434</td><td class="">0.695372</td><td class="">0.983369</td><td class="">31</td><td class="">0.843786</td><td class="">0.814667</td><td class="">0.877095</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/2b3348f1726b</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0432</td><td class="">0.72028</td><td class="">0.919643</td><td class="">9</td><td class="">0.831774</td><td class="">0.807843</td><td class="">0.904866</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/ab3d9b05fddd</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0436</td><td class="">0.680912</td><td class="">0.933927</td><td class="">319</td><td class="">0.83609</td><td class="">0.787598</td><td class="">0.938234</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/c3e2890d6b4e</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0435</td><td class="">0.651318</td><td class="">0.933971</td><td class="">145</td><td class="">0.826679</td><td class="">0.767446</td><td class="">0.909953</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/8943e0beb8ee</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0025</td><td class="">0.732283</td><td class="">0.792614</td><td class="">73</td><td class="">0.763052</td><td class="">0.761255</td><td class="">0.398802</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/35d74c5904af</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0433</td><td class="">0.602667</td><td class="">0.995595</td><td class="">1</td><td class="">0.7351</td><td class="">0.750831</td><td class="">0.923711</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/410ec933e4af</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0029</td><td class="">0.66178</td><td class="">0.817947</td><td class="">844</td><td class="">0.794179</td><td class="">0.731623</td><td class="">0.320734</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/14aef80554ab</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">ts</td><td class="">no_bands</td><td class="">all</td><td class="">v5_0020</td><td class="">0.586436</td><td class="">0.906785</td><td class="">136</td><td class="">0.811637</td><td class="">0.712248</td><td class="">0.981417</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/07a4fb22a365</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0030</td><td class="">0.507266</td><td class="">0.846117</td><td class="">1930</td><td class="">0.749405</td><td class="">0.634272</td><td class="">0.254057</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/fcfd46e8e4ab</td></tr></tbody></table></div>
+<div class="ranking"><h3>Top 10 by test_recall</h3><table><thead><tr><th>measure</th><th>direction</th><th>effective_threshold</th><th>temporal_config_id</th><th>pipeline</th><th>bands_id</th><th>deduplication_mode</th><th>f05_variant</th><th>test_precision_effective</th><th>test_recall_effective</th><th>test_fn_effective</th><th>test_pr_auc_effective</th><th>test_f1_effective</th><th>decision_threshold_effective</th><th>threshold_source_effective</th><th>threshold_policy_effective</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0433</td><td class="">0.602667</td><td class="">0.995595</td><td class="">1</td><td class="">0.7351</td><td class="">0.750831</td><td class="">0.923711</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/410ec933e4af</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0434</td><td class="">0.695372</td><td class="">0.983369</td><td class="">31</td><td class="">0.843786</td><td class="">0.814667</td><td class="">0.877095</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/2b3348f1726b</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0028</td><td class="">0.718723</td><td class="">0.941426</td><td class="">262</td><td class="">0.906494</td><td class="">0.815137</td><td class="">0.221686</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/7e24fa90ec4c</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0435</td><td class="">0.651318</td><td class="">0.933971</td><td class="">145</td><td class="">0.826679</td><td class="">0.767446</td><td class="">0.909953</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/8943e0beb8ee</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0436</td><td class="">0.680912</td><td class="">0.933927</td><td class="">319</td><td class="">0.83609</td><td class="">0.787598</td><td class="">0.938234</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/c3e2890d6b4e</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0432</td><td class="">0.72028</td><td class="">0.919643</td><td class="">9</td><td class="">0.831774</td><td class="">0.807843</td><td class="">0.904866</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/ab3d9b05fddd</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">ts</td><td class="">no_bands</td><td class="">all</td><td class="">v5_0020</td><td class="">0.586436</td><td class="">0.906785</td><td class="">136</td><td class="">0.811637</td><td class="">0.712248</td><td class="">0.981417</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/07a4fb22a365</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">ts</td><td class="">no_bands</td><td class="">all</td><td class="">v5_0019</td><td class="">0.322981</td><td class="">0.866667</td><td class="">64</td><td class="">0.550033</td><td class="">0.470588</td><td class="">0.931109</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/c26973948c5a</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0030</td><td class="">0.507266</td><td class="">0.846117</td><td class="">1930</td><td class="">0.749405</td><td class="">0.634272</td><td class="">0.254057</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/fcfd46e8e4ab</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0029</td><td class="">0.66178</td><td class="">0.817947</td><td class="">844</td><td class="">0.794179</td><td class="">0.731623</td><td class="">0.320734</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/14aef80554ab</td></tr></tbody></table></div>
+<div class="ranking"><h3>Top 10 by test_precision</h3><table><thead><tr><th>measure</th><th>direction</th><th>effective_threshold</th><th>temporal_config_id</th><th>pipeline</th><th>bands_id</th><th>deduplication_mode</th><th>f05_variant</th><th>test_precision_effective</th><th>test_recall_effective</th><th>test_fn_effective</th><th>test_pr_auc_effective</th><th>test_f1_effective</th><th>decision_threshold_effective</th><th>threshold_source_effective</th><th>threshold_policy_effective</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0025</td><td class="">0.732283</td><td class="">0.792614</td><td class="">73</td><td class="">0.763052</td><td class="">0.761255</td><td class="">0.398802</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/35d74c5904af</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0432</td><td class="">0.72028</td><td class="">0.919643</td><td class="">9</td><td class="">0.831774</td><td class="">0.807843</td><td class="">0.904866</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/ab3d9b05fddd</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0028</td><td class="">0.718723</td><td class="">0.941426</td><td class="">262</td><td class="">0.906494</td><td class="">0.815137</td><td class="">0.221686</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/7e24fa90ec4c</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0434</td><td class="">0.695372</td><td class="">0.983369</td><td class="">31</td><td class="">0.843786</td><td class="">0.814667</td><td class="">0.877095</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/2b3348f1726b</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0436</td><td class="">0.680912</td><td class="">0.933927</td><td class="">319</td><td class="">0.83609</td><td class="">0.787598</td><td class="">0.938234</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/c3e2890d6b4e</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0029</td><td class="">0.66178</td><td class="">0.817947</td><td class="">844</td><td class="">0.794179</td><td class="">0.731623</td><td class="">0.320734</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/14aef80554ab</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0435</td><td class="">0.651318</td><td class="">0.933971</td><td class="">145</td><td class="">0.826679</td><td class="">0.767446</td><td class="">0.909953</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/8943e0beb8ee</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0433</td><td class="">0.602667</td><td class="">0.995595</td><td class="">1</td><td class="">0.7351</td><td class="">0.750831</td><td class="">0.923711</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/410ec933e4af</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">ts</td><td class="">no_bands</td><td class="">all</td><td class="">v5_0020</td><td class="">0.586436</td><td class="">0.906785</td><td class="">136</td><td class="">0.811637</td><td class="">0.712248</td><td class="">0.981417</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/07a4fb22a365</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0030</td><td class="">0.507266</td><td class="">0.846117</td><td class="">1930</td><td class="">0.749405</td><td class="">0.634272</td><td class="">0.254057</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/fcfd46e8e4ab</td></tr></tbody></table></div>
+<div class="ranking"><h3>Top 10 by test_pr_auc</h3><table><thead><tr><th>measure</th><th>direction</th><th>effective_threshold</th><th>temporal_config_id</th><th>pipeline</th><th>bands_id</th><th>deduplication_mode</th><th>f05_variant</th><th>test_precision_effective</th><th>test_recall_effective</th><th>test_fn_effective</th><th>test_pr_auc_effective</th><th>test_f1_effective</th><th>decision_threshold_effective</th><th>threshold_source_effective</th><th>threshold_policy_effective</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0028</td><td class="">0.718723</td><td class="">0.941426</td><td class="">262</td><td class="">0.906494</td><td class="">0.815137</td><td class="">0.221686</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/7e24fa90ec4c</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0434</td><td class="">0.695372</td><td class="">0.983369</td><td class="">31</td><td class="">0.843786</td><td class="">0.814667</td><td class="">0.877095</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/2b3348f1726b</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0436</td><td class="">0.680912</td><td class="">0.933927</td><td class="">319</td><td class="">0.83609</td><td class="">0.787598</td><td class="">0.938234</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/c3e2890d6b4e</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0432</td><td class="">0.72028</td><td class="">0.919643</td><td class="">9</td><td class="">0.831774</td><td class="">0.807843</td><td class="">0.904866</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/ab3d9b05fddd</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0435</td><td class="">0.651318</td><td class="">0.933971</td><td class="">145</td><td class="">0.826679</td><td class="">0.767446</td><td class="">0.909953</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/8943e0beb8ee</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">ts</td><td class="">no_bands</td><td class="">all</td><td class="">v5_0020</td><td class="">0.586436</td><td class="">0.906785</td><td class="">136</td><td class="">0.811637</td><td class="">0.712248</td><td class="">0.981417</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/07a4fb22a365</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0029</td><td class="">0.66178</td><td class="">0.817947</td><td class="">844</td><td class="">0.794179</td><td class="">0.731623</td><td class="">0.320734</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/14aef80554ab</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">90</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0025</td><td class="">0.732283</td><td class="">0.792614</td><td class="">73</td><td class="">0.763052</td><td class="">0.761255</td><td class="">0.398802</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/35d74c5904af</td></tr><tr><td class="">PVPCS_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">uniEvents</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0030</td><td class="">0.507266</td><td class="">0.846117</td><td class="">1930</td><td class="">0.749405</td><td class="">0.634272</td><td class="">0.254057</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/fcfd46e8e4ab</td></tr><tr><td class="">Battery_Active_Power</td><td class="">high</td><td class="">80</td><td class="">OW600_PW100_LT10_synchro</td><td class="">events</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0433</td><td class="">0.602667</td><td class="">0.995595</td><td class="">1</td><td class="">0.7351</td><td class="">0.750831</td><td class="">0.923711</td><td class="">validation</td><td class="">optimal_f2</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/410ec933e4af</td></tr></tbody></table></div>
+    </section>
+    
+    <section class="criterion-analysis">
+      <h2>Criterion Analysis</h2>
+      <p class="muted">Aggregated over outputs that include the new F05 validation candidate blocks.</p>
+      <div class="summary-grid">
+        <div class="stat"><span>n_blocks</span><strong>15</strong></div><div class="stat"><span>f1_choice_improves_f1_count</span><strong>12</strong></div><div class="stat"><span>precision_choice_improves_precision_count</span><strong>13</strong></div><div class="stat"><span>avg_recall_loss_if_select_f1</span><strong>0.0129929</strong></div><div class="stat"><span>avg_recall_loss_if_select_precision</span><strong>0.0169025</strong></div><div class="stat"><span>avg_f1_gain_if_select_f1</span><strong>0.0172717</strong></div><div class="stat"><span>avg_precision_gain_if_select_precision</span><strong>0.0334689</strong></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Comparison Blocks</h2>
+      
+<section class="comparison-block">
+  <div class="block-title">
+    <div>
+      <h2>Battery_Active_Power <span>high</span> <span>threshold 80</span></h2>
+      <p>Temporal config: OW=600, PW=100, LT=10, strategy=synchro</p>
+    </div>
+  </div>
+  <div class="pipeline-grid">
+    
+<div class="pipeline-column ts">
+  <div class="column-title">TS</div>
+  
+<article class="model-card ts">
+  <div class="card-head">
+    <div>
+      <h5>TS</h5>
+      <p>no_bands · all · v5_0018</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.343137</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.660377</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.231788</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.265927</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.679245</strong></div><div><span>val_precision</span><strong>0.258993</strong></div><div><span>val_f1</span><strong>0.375</strong></div><div><span>val_pr_auc</span><strong>0.232746</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.944042</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.223572</strong></div><div><span>val_positive_ratio</span><strong>0.00212</strong></div><div><span>test_positive_ratio</span><strong>0.00212</strong></div><div><span>val_cap_used</span><strong>True</strong></div><div><span>test_cap_used</span><strong>True</strong></div><div><span>n_train</span><strong>25759</strong></div><div><span>n_val</span><strong>25000</strong></div><div><span>n_test</span><strong>25000</strong></div><div><span>tp</span><strong>35</strong></div><div><span>fp</span><strong>116</strong></div><div><span>tn</span><strong>24831</strong></div><div><span>fn</span><strong>18</strong></div><div><span>execution_time</span><strong>728.417</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>True</strong></div><div><span>TFLite precision</span><strong>0.231788</strong></div><div><span>TFLite recall</span><strong>0.660377</strong></div><div><span>TFLite F1</span><strong>0.343137</strong></div><div><span>TFLite PR-AUC</span><strong>0.283858</strong></div><div><span>Incompatibility reason</span><strong>-</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.375</strong></div><div><span>Recall</span><strong>0.679245</strong></div><div><span>Precision</span><strong>0.258993</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta neutral"><span>Delta F1 vs selected</span><strong>0</strong></div><div class="criterion-delta neutral"><span>Delta recall vs selected</span><strong>0</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.37234</strong></div><div><span>Recall</span><strong>0.660377</strong></div><div><span>Precision</span><strong>0.259259</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.000266454</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0188679</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.375</strong></div><div><span>Recall</span><strong>0.679245</strong></div><div><span>Precision</span><strong>0.258993</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>9613ca4ad911</strong></div><div><span>run_id</span><strong>2026-05-29_002</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/9613ca4ad911</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f05_modeling/v5_0018</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f06_quant/v6_0010</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+<div class="pipeline-column events">
+  <div class="column-title">Events</div>
+  
+<article class="model-card events">
+  <div class="card-head">
+    <div>
+      <h5>Events</h5>
+      <p>fine_4 · all · v5_0433</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  <span class="badge best">Best F1 in block</span>
+  <p class="bands">bands: [20, 40, 60, 80]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.750831</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.995595</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.602667</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.7351</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.986784</strong></div><div><span>val_precision</span><strong>0.653061</strong></div><div><span>val_f1</span><strong>0.785965</strong></div><div><span>val_pr_auc</span><strong>0.764489</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.923711</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.103862</strong></div><div><span>val_positive_ratio</span><strong>0.00227</strong></div><div><span>test_positive_ratio</span><strong>0.00227</strong></div><div><span>val_cap_used</span><strong>True</strong></div><div><span>test_cap_used</span><strong>True</strong></div><div><span>n_train</span><strong>22318</strong></div><div><span>n_val</span><strong>100000</strong></div><div><span>n_test</span><strong>100000</strong></div><div><span>tp</span><strong>226</strong></div><div><span>fp</span><strong>149</strong></div><div><span>tn</span><strong>99624</strong></div><div><span>fn</span><strong>1</strong></div><div><span>execution_time</span><strong>10997.2</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>False</strong></div><div><span>TFLite precision</span><strong>0.609164</strong></div><div><span>TFLite recall</span><strong>0.995595</strong></div><div><span>TFLite F1</span><strong>0.755853</strong></div><div><span>TFLite PR-AUC</span><strong>0.671676</strong></div><div><span>Incompatibility reason</span><strong>Quantized model input dtype must be int8, uint8 or int16, got float32</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong><span class="criterion-badge">better F1</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.802893</strong></div><div><span>Recall</span><strong>0.977974</strong></div><div><span>Precision</span><strong>0.680982</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta F1 vs selected</span><strong>+0.0169284</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.00881057</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.801457</strong></div><div><span>Recall</span><strong>0.969163</strong></div><div><span>Precision</span><strong>0.68323</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.0301686</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0176211</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.785965</strong></div><div><span>Recall</span><strong>0.986784</strong></div><div><span>Precision</span><strong>0.653061</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>410ec933e4af</strong></div><div><span>run_id</span><strong>2026-06-03_001</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/410ec933e4af</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f05_modeling/v5_0433</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f06_quant/v6_0013</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+<div class="pipeline-column uniEvents">
+  <div class="column-title">UniEvents</div>
+  
+<article class="model-card uniEvents">
+  <div class="card-head">
+    <div>
+      <h5>UniEvents</h5>
+      <p>fine_4 · all · v5_0027</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  <p class="bands">bands: [20, 40, 60, 80]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.463184</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.657986</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.357379</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.489564</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.637153</strong></div><div><span>val_precision</span><strong>0.345574</strong></div><div><span>val_f1</span><strong>0.448107</strong></div><div><span>val_pr_auc</span><strong>0.491629</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.119974</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.30615</strong></div><div><span>val_positive_ratio</span><strong>0.067086</strong></div><div><span>test_positive_ratio</span><strong>0.067086</strong></div><div><span>val_cap_used</span><strong>False</strong></div><div><span>test_cap_used</span><strong>False</strong></div><div><span>n_train</span><strong>1496</strong></div><div><span>n_val</span><strong>17172</strong></div><div><span>n_test</span><strong>17172</strong></div><div><span>tp</span><strong>758</strong></div><div><span>fp</span><strong>1363</strong></div><div><span>tn</span><strong>14657</strong></div><div><span>fn</span><strong>394</strong></div><div><span>execution_time</span><strong>156.638</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>True</strong></div><div><span>TFLite precision</span><strong>0.215704</strong></div><div><span>TFLite recall</span><strong>0.631944</strong></div><div><span>TFLite F1</span><strong>0.321626</strong></div><div><span>TFLite PR-AUC</span><strong>0.240691</strong></div><div><span>Incompatibility reason</span><strong>-</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong><span class="criterion-badge">better F1</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.483871</strong></div><div><span>Recall</span><strong>0.598958</strong></div><div><span>Precision</span><strong>0.405882</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta F1 vs selected</span><strong>+0.0357635</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0381944</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.483871</strong></div><div><span>Recall</span><strong>0.598958</strong></div><div><span>Precision</span><strong>0.405882</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.060308</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0381944</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.448107</strong></div><div><span>Recall</span><strong>0.637153</strong></div><div><span>Precision</span><strong>0.345574</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>e325dbaa0a0a</strong></div><div><span>run_id</span><strong>2026-05-29_002</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/e325dbaa0a0a</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f05_modeling/v5_0027</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f06_quant/v6_0014</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+  </div>
+  <h3>Compact Comparison Table</h3>
+  <table><thead><tr><th>pipeline</th><th>bands_id</th><th>deduplication_mode</th><th>f05_variant</th><th>test_precision_effective</th><th>test_recall_effective</th><th>test_f1_effective</th><th>test_fn_effective</th><th>test_pr_auc_effective</th><th>val_recall_effective</th><th>decision_threshold_effective</th><th>threshold_source_effective</th><th>threshold_policy_effective</th><th>positive_ratio_train</th><th>val_positive_ratio_effective</th><th>test_positive_ratio_effective</th><th>n_train</th><th>n_val</th><th>n_test</th><th>best_by_f1_f1</th><th>best_by_f1_recall</th><th>best_by_f1_precision</th><th>best_by_precision_f1</th><th>best_by_precision_recall</th><th>best_by_precision_precision</th><th>best_by_recall_f1</th><th>best_by_recall_recall</th><th>best_by_recall_precision</th><th>delta_f1_choice_f1_vs_recall_choice</th><th>delta_f1_choice_recall_vs_recall_choice</th><th>delta_precision_choice_precision_vs_recall_choice</th><th>delta_precision_choice_recall_vs_recall_choice</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">ts</td><td class="">no_bands</td><td class="">all</td><td class="">v5_0018</td><td class="">0.231788</td><td class="">0.660377</td><td class="">0.343137</td><td class="">18</td><td class="">0.265927</td><td class="">0.679245</td><td class="">0.944042</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.223572</td><td class="">0.00212</td><td class="">0.00212</td><td class="">25759</td><td class="">25000</td><td class="">25000</td><td class="">0.375</td><td class="">0.679245</td><td class="">0.258993</td><td class="">0.37234</td><td class="">0.660377</td><td class="">0.259259</td><td class="">0.375</td><td class="">0.679245</td><td class="">0.258993</td><td class="">0</td><td class="">0</td><td class="">0.000266454</td><td class="">-0.0188679</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/9613ca4ad911</td></tr><tr><td class="">events</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0433</td><td class="">0.602667</td><td class="">0.995595</td><td class="">0.750831</td><td class="">1</td><td class="">0.7351</td><td class="">0.986784</td><td class="">0.923711</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.103862</td><td class="">0.00227</td><td class="">0.00227</td><td class="">22318</td><td class="">100000</td><td class="">100000</td><td class="">0.802893</td><td class="">0.977974</td><td class="">0.680982</td><td class="">0.801457</td><td class="">0.969163</td><td class="">0.68323</td><td class="">0.785965</td><td class="">0.986784</td><td class="">0.653061</td><td class="">0.0169284</td><td class="">-0.00881057</td><td class="">0.0301686</td><td class="">-0.0176211</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/410ec933e4af</td></tr><tr><td class="">uniEvents</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0027</td><td class="">0.357379</td><td class="">0.657986</td><td class="">0.463184</td><td class="">394</td><td class="">0.489564</td><td class="">0.637153</td><td class="">0.119974</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.30615</td><td class="">0.067086</td><td class="">0.067086</td><td class="">1496</td><td class="">17172</td><td class="">17172</td><td class="">0.483871</td><td class="">0.598958</td><td class="">0.405882</td><td class="">0.483871</td><td class="">0.598958</td><td class="">0.405882</td><td class="">0.448107</td><td class="">0.637153</td><td class="">0.345574</td><td class="">0.0357635</td><td class="">-0.0381944</td><td class="">0.060308</td><td class="">-0.0381944</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/e325dbaa0a0a</td></tr></tbody></table>
+</section>
+
+
+<section class="comparison-block">
+  <div class="block-title">
+    <div>
+      <h2>Battery_Active_Power <span>high</span> <span>threshold 90</span></h2>
+      <p>Temporal config: OW=600, PW=100, LT=10, strategy=synchro</p>
+    </div>
+  </div>
+  <div class="pipeline-grid">
+    
+<div class="pipeline-column ts">
+  <div class="column-title">TS</div>
+  
+<article class="model-card ts">
+  <div class="card-head">
+    <div>
+      <h5>TS</h5>
+      <p>no_bands · all · v5_0017</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.346154</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.6</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.243243</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.180607</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.533333</strong></div><div><span>val_precision</span><strong>0.222222</strong></div><div><span>val_f1</span><strong>0.313725</strong></div><div><span>val_pr_auc</span><strong>0.147599</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.944551</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.0765963</strong></div><div><span>val_positive_ratio</span><strong>0.0006</strong></div><div><span>test_positive_ratio</span><strong>0.0006</strong></div><div><span>val_cap_used</span><strong>True</strong></div><div><span>test_cap_used</span><strong>True</strong></div><div><span>n_train</span><strong>21659</strong></div><div><span>n_val</span><strong>25000</strong></div><div><span>n_test</span><strong>25000</strong></div><div><span>tp</span><strong>9</strong></div><div><span>fp</span><strong>28</strong></div><div><span>tn</span><strong>24957</strong></div><div><span>fn</span><strong>6</strong></div><div><span>execution_time</span><strong>729.807</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>True</strong></div><div><span>TFLite precision</span><strong>0.25</strong></div><div><span>TFLite recall</span><strong>0.6</strong></div><div><span>TFLite F1</span><strong>0.352941</strong></div><div><span>TFLite PR-AUC</span><strong>0.238049</strong></div><div><span>Incompatibility reason</span><strong>-</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.313725</strong></div><div><span>Recall</span><strong>0.533333</strong></div><div><span>Precision</span><strong>0.222222</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta neutral"><span>Delta F1 vs selected</span><strong>0</strong></div><div class="criterion-delta neutral"><span>Delta recall vs selected</span><strong>0</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.313725</strong></div><div><span>Recall</span><strong>0.533333</strong></div><div><span>Precision</span><strong>0.222222</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta neutral"><span>Delta precision vs selected</span><strong>0</strong></div><div class="criterion-delta neutral"><span>Delta recall vs selected</span><strong>0</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.313725</strong></div><div><span>Recall</span><strong>0.533333</strong></div><div><span>Precision</span><strong>0.222222</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>51da5d25a213</strong></div><div><span>run_id</span><strong>2026-05-29_002</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/51da5d25a213</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f05_modeling/v5_0017</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f06_quant/v6_0009</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+<div class="pipeline-column events">
+  <div class="column-title">Events</div>
+  
+<article class="model-card events">
+  <div class="card-head">
+    <div>
+      <h5>Events</h5>
+      <p>dense_mid · all · v5_0432</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  <span class="badge best">Best F1 in block</span>
+  <p class="bands">bands: [10, 25, 50, 75, 90]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.807843</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.919643</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.72028</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.831774</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.955752</strong></div><div><span>val_precision</span><strong>0.739726</strong></div><div><span>val_f1</span><strong>0.833977</strong></div><div><span>val_pr_auc</span><strong>0.860808</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.904866</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.0467112</strong></div><div><span>val_positive_ratio</span><strong>0.00113</strong></div><div><span>test_positive_ratio</span><strong>0.00112</strong></div><div><span>val_cap_used</span><strong>True</strong></div><div><span>test_cap_used</span><strong>True</strong></div><div><span>n_train</span><strong>20980</strong></div><div><span>n_val</span><strong>100000</strong></div><div><span>n_test</span><strong>100000</strong></div><div><span>tp</span><strong>103</strong></div><div><span>fp</span><strong>40</strong></div><div><span>tn</span><strong>99848</strong></div><div><span>fn</span><strong>9</strong></div><div><span>execution_time</span><strong>12818.2</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>False</strong></div><div><span>TFLite precision</span><strong>0.725352</strong></div><div><span>TFLite recall</span><strong>0.919643</strong></div><div><span>TFLite F1</span><strong>0.811024</strong></div><div><span>TFLite PR-AUC</span><strong>0.761136</strong></div><div><span>Incompatibility reason</span><strong>Quantized model input dtype must be int8, uint8 or int16, got float32</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong><span class="criterion-badge">better F1</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.834646</strong></div><div><span>Recall</span><strong>0.938053</strong></div><div><span>Precision</span><strong>0.751773</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta F1 vs selected</span><strong>+0.000668835</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0176991</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.834646</strong></div><div><span>Recall</span><strong>0.938053</strong></div><div><span>Precision</span><strong>0.751773</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.012047</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0176991</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.833977</strong></div><div><span>Recall</span><strong>0.955752</strong></div><div><span>Precision</span><strong>0.739726</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>ab3d9b05fddd</strong></div><div><span>run_id</span><strong>2026-06-03_001</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/ab3d9b05fddd</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f05_modeling/v5_0432</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f06_quant/v6_0012</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+<div class="pipeline-column uniEvents">
+  <div class="column-title">UniEvents</div>
+  
+<article class="model-card uniEvents">
+  <div class="card-head">
+    <div>
+      <h5>UniEvents</h5>
+      <p>coarse_10 · all · v5_0025</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  <p class="bands">bands: [10, 20, 30, 40, 50, 60, 70, 80, 90]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.761255</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.792614</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.732283</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.763052</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.724432</strong></div><div><span>val_precision</span><strong>0.714286</strong></div><div><span>val_f1</span><strong>0.719323</strong></div><div><span>val_pr_auc</span><strong>0.678464</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.398802</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.0328956</strong></div><div><span>val_positive_ratio</span><strong>0.0193237</strong></div><div><span>test_positive_ratio</span><strong>0.0193237</strong></div><div><span>val_cap_used</span><strong>False</strong></div><div><span>test_cap_used</span><strong>False</strong></div><div><span>n_train</span><strong>7691</strong></div><div><span>n_val</span><strong>18216</strong></div><div><span>n_test</span><strong>18216</strong></div><div><span>tp</span><strong>279</strong></div><div><span>fp</span><strong>102</strong></div><div><span>tn</span><strong>17762</strong></div><div><span>fn</span><strong>73</strong></div><div><span>execution_time</span><strong>474.163</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>True</strong></div><div><span>TFLite precision</span><strong>1</strong></div><div><span>TFLite recall</span><strong>0.0369318</strong></div><div><span>TFLite F1</span><strong>0.0712329</strong></div><div><span>TFLite PR-AUC</span><strong>0.127962</strong></div><div><span>Incompatibility reason</span><strong>-</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong><span class="criterion-badge">better F1</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.734513</strong></div><div><span>Recall</span><strong>0.707386</strong></div><div><span>Precision</span><strong>0.763804</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta F1 vs selected</span><strong>+0.0151903</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0170455</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.734513</strong></div><div><span>Recall</span><strong>0.707386</strong></div><div><span>Precision</span><strong>0.763804</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.049518</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0170455</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.719323</strong></div><div><span>Recall</span><strong>0.724432</strong></div><div><span>Precision</span><strong>0.714286</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>35d74c5904af</strong></div><div><span>run_id</span><strong>2026-05-29_002</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/35d74c5904af</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f05_modeling/v5_0025</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f06_quant/v6_0012</strong></div>
+    </div>
+  </details>
+</article>
+
+<article class="model-card uniEvents">
+  <div class="card-head">
+    <div>
+      <h5>UniEvents</h5>
+      <p>dense_mid · all · v5_0026</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  <p class="bands">bands: [10, 25, 50, 75, 90]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.417191</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.565341</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.330565</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.444913</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.599432</strong></div><div><span>val_precision</span><strong>0.367596</strong></div><div><span>val_f1</span><strong>0.455724</strong></div><div><span>val_pr_auc</span><strong>0.489623</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.0189274</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.0820734</strong></div><div><span>val_positive_ratio</span><strong>0.0270894</strong></div><div><span>test_positive_ratio</span><strong>0.0270894</strong></div><div><span>val_cap_used</span><strong>False</strong></div><div><span>test_cap_used</span><strong>False</strong></div><div><span>n_train</span><strong>1852</strong></div><div><span>n_val</span><strong>12994</strong></div><div><span>n_test</span><strong>12994</strong></div><div><span>tp</span><strong>199</strong></div><div><span>fp</span><strong>403</strong></div><div><span>tn</span><strong>12239</strong></div><div><span>fn</span><strong>153</strong></div><div><span>execution_time</span><strong>141.846</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>True</strong></div><div><span>TFLite precision</span><strong>0.183175</strong></div><div><span>TFLite recall</span><strong>0.383523</strong></div><div><span>TFLite F1</span><strong>0.247934</strong></div><div><span>TFLite PR-AUC</span><strong>0.28074</strong></div><div><span>Incompatibility reason</span><strong>-</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong><span class="criterion-badge">better F1</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.498177</strong></div><div><span>Recall</span><strong>0.582386</strong></div><div><span>Precision</span><strong>0.435244</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta F1 vs selected</span><strong>+0.0424539</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0170455</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.498177</strong></div><div><span>Recall</span><strong>0.582386</strong></div><div><span>Precision</span><strong>0.435244</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.0676483</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0170455</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.455724</strong></div><div><span>Recall</span><strong>0.599432</strong></div><div><span>Precision</span><strong>0.367596</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>078443f2c750</strong></div><div><span>run_id</span><strong>2026-05-29_002</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/078443f2c750</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f05_modeling/v5_0026</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f06_quant/v6_0013</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+  </div>
+  <h3>Compact Comparison Table</h3>
+  <table><thead><tr><th>pipeline</th><th>bands_id</th><th>deduplication_mode</th><th>f05_variant</th><th>test_precision_effective</th><th>test_recall_effective</th><th>test_f1_effective</th><th>test_fn_effective</th><th>test_pr_auc_effective</th><th>val_recall_effective</th><th>decision_threshold_effective</th><th>threshold_source_effective</th><th>threshold_policy_effective</th><th>positive_ratio_train</th><th>val_positive_ratio_effective</th><th>test_positive_ratio_effective</th><th>n_train</th><th>n_val</th><th>n_test</th><th>best_by_f1_f1</th><th>best_by_f1_recall</th><th>best_by_f1_precision</th><th>best_by_precision_f1</th><th>best_by_precision_recall</th><th>best_by_precision_precision</th><th>best_by_recall_f1</th><th>best_by_recall_recall</th><th>best_by_recall_precision</th><th>delta_f1_choice_f1_vs_recall_choice</th><th>delta_f1_choice_recall_vs_recall_choice</th><th>delta_precision_choice_precision_vs_recall_choice</th><th>delta_precision_choice_recall_vs_recall_choice</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">ts</td><td class="">no_bands</td><td class="">all</td><td class="">v5_0017</td><td class="">0.243243</td><td class="">0.6</td><td class="">0.346154</td><td class="">6</td><td class="">0.180607</td><td class="">0.533333</td><td class="">0.944551</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.0765963</td><td class="">0.0006</td><td class="">0.0006</td><td class="">21659</td><td class="">25000</td><td class="">25000</td><td class="">0.313725</td><td class="">0.533333</td><td class="">0.222222</td><td class="">0.313725</td><td class="">0.533333</td><td class="">0.222222</td><td class="">0.313725</td><td class="">0.533333</td><td class="">0.222222</td><td class="">0</td><td class="">0</td><td class="">0</td><td class="">0</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/51da5d25a213</td></tr><tr><td class="">events</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0432</td><td class="">0.72028</td><td class="">0.919643</td><td class="">0.807843</td><td class="">9</td><td class="">0.831774</td><td class="">0.955752</td><td class="">0.904866</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.0467112</td><td class="">0.00113</td><td class="">0.00112</td><td class="">20980</td><td class="">100000</td><td class="">100000</td><td class="">0.834646</td><td class="">0.938053</td><td class="">0.751773</td><td class="">0.834646</td><td class="">0.938053</td><td class="">0.751773</td><td class="">0.833977</td><td class="">0.955752</td><td class="">0.739726</td><td class="">0.000668835</td><td class="">-0.0176991</td><td class="">0.012047</td><td class="">-0.0176991</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/ab3d9b05fddd</td></tr><tr><td class="">uniEvents</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0025</td><td class="">0.732283</td><td class="">0.792614</td><td class="">0.761255</td><td class="">73</td><td class="">0.763052</td><td class="">0.724432</td><td class="">0.398802</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.0328956</td><td class="">0.0193237</td><td class="">0.0193237</td><td class="">7691</td><td class="">18216</td><td class="">18216</td><td class="">0.734513</td><td class="">0.707386</td><td class="">0.763804</td><td class="">0.734513</td><td class="">0.707386</td><td class="">0.763804</td><td class="">0.719323</td><td class="">0.724432</td><td class="">0.714286</td><td class="">0.0151903</td><td class="">-0.0170455</td><td class="">0.049518</td><td class="">-0.0170455</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/35d74c5904af</td></tr><tr><td class="">uniEvents</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0026</td><td class="">0.330565</td><td class="">0.565341</td><td class="">0.417191</td><td class="">153</td><td class="">0.444913</td><td class="">0.599432</td><td class="">0.0189274</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.0820734</td><td class="">0.0270894</td><td class="">0.0270894</td><td class="">1852</td><td class="">12994</td><td class="">12994</td><td class="">0.498177</td><td class="">0.582386</td><td class="">0.435244</td><td class="">0.498177</td><td class="">0.582386</td><td class="">0.435244</td><td class="">0.455724</td><td class="">0.599432</td><td class="">0.367596</td><td class="">0.0424539</td><td class="">-0.0170455</td><td class="">0.0676483</td><td class="">-0.0170455</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/078443f2c750</td></tr></tbody></table>
+</section>
+
+
+<section class="comparison-block">
+  <div class="block-title">
+    <div>
+      <h2>PVPCS_Active_Power <span>high</span> <span>threshold 80</span></h2>
+      <p>Temporal config: OW=600, PW=100, LT=10, strategy=synchro</p>
+    </div>
+  </div>
+  <div class="pipeline-grid">
+    
+<div class="pipeline-column ts">
+  <div class="column-title">TS</div>
+  
+<article class="model-card ts">
+  <div class="card-head">
+    <div>
+      <h5>TS</h5>
+      <p>no_bands · all · v5_0020</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.712248</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.906785</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.586436</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.811637</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.928718</strong></div><div><span>val_precision</span><strong>0.59222</strong></div><div><span>val_f1</span><strong>0.723245</strong></div><div><span>val_pr_auc</span><strong>0.818469</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.981417</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.88729</strong></div><div><span>val_positive_ratio</span><strong>0.05836</strong></div><div><span>test_positive_ratio</span><strong>0.05836</strong></div><div><span>val_cap_used</span><strong>True</strong></div><div><span>test_cap_used</span><strong>True</strong></div><div><span>n_train</span><strong>177446</strong></div><div><span>n_val</span><strong>25000</strong></div><div><span>n_test</span><strong>25000</strong></div><div><span>tp</span><strong>1323</strong></div><div><span>fp</span><strong>933</strong></div><div><span>tn</span><strong>22608</strong></div><div><span>fn</span><strong>136</strong></div><div><span>execution_time</span><strong>929.706</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>True</strong></div><div><span>TFLite precision</span><strong>0.59095</strong></div><div><span>TFLite recall</span><strong>0.895134</strong></div><div><span>TFLite F1</span><strong>0.711911</strong></div><div><span>TFLite PR-AUC</span><strong>0.668242</strong></div><div><span>Incompatibility reason</span><strong>-</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong><span class="criterion-badge">better F1</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.728255</strong></div><div><span>Recall</span><strong>0.92392</strong></div><div><span>Precision</span><strong>0.600981</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta F1 vs selected</span><strong>+0.00500973</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.00479781</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.728255</strong></div><div><span>Recall</span><strong>0.92392</strong></div><div><span>Precision</span><strong>0.600981</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.00876055</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.00479781</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.723245</strong></div><div><span>Recall</span><strong>0.928718</strong></div><div><span>Precision</span><strong>0.59222</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>07a4fb22a365</strong></div><div><span>run_id</span><strong>2026-05-29_002</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/07a4fb22a365</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f05_modeling/v5_0020</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f06_quant/v6_0012</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+<div class="pipeline-column events">
+  <div class="column-title">Events</div>
+  
+<article class="model-card events">
+  <div class="card-head">
+    <div>
+      <h5>Events</h5>
+      <p>fine_4 · all · v5_0436</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  <span class="badge best">Best F1 in block</span>
+  <p class="bands">bands: [20, 40, 60, 80]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.787598</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.933927</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.680912</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.83609</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.932063</strong></div><div><span>val_precision</span><strong>0.665385</strong></div><div><span>val_f1</span><strong>0.776464</strong></div><div><span>val_pr_auc</span><strong>0.831805</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.938234</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.717921</strong></div><div><span>val_positive_ratio</span><strong>0.04828</strong></div><div><span>test_positive_ratio</span><strong>0.04828</strong></div><div><span>val_cap_used</span><strong>True</strong></div><div><span>test_cap_used</span><strong>True</strong></div><div><span>n_train</span><strong>70902</strong></div><div><span>n_val</span><strong>100000</strong></div><div><span>n_test</span><strong>100000</strong></div><div><span>tp</span><strong>4509</strong></div><div><span>fp</span><strong>2113</strong></div><div><span>tn</span><strong>93059</strong></div><div><span>fn</span><strong>319</strong></div><div><span>execution_time</span><strong>13202.2</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>False</strong></div><div><span>TFLite precision</span><strong>0.683642</strong></div><div><span>TFLite recall</span><strong>0.931442</strong></div><div><span>TFLite F1</span><strong>0.788532</strong></div><div><span>TFLite PR-AUC</span><strong>0.786255</strong></div><div><span>Incompatibility reason</span><strong>Quantized model input dtype must be int8, uint8 or int16, got float32</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong><span class="criterion-badge">better F1</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.781857</strong></div><div><span>Recall</span><strong>0.917564</strong></div><div><span>Precision</span><strong>0.681119</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta F1 vs selected</span><strong>+0.00539219</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0144988</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.781857</strong></div><div><span>Recall</span><strong>0.917564</strong></div><div><span>Precision</span><strong>0.681119</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.0157341</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0144988</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.776464</strong></div><div><span>Recall</span><strong>0.932063</strong></div><div><span>Precision</span><strong>0.665385</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>c3e2890d6b4e</strong></div><div><span>run_id</span><strong>2026-06-03_001</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/c3e2890d6b4e</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f05_modeling/v5_0436</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f06_quant/v6_0016</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+<div class="pipeline-column uniEvents">
+  <div class="column-title">UniEvents</div>
+  
+<article class="model-card uniEvents">
+  <div class="card-head">
+    <div>
+      <h5>UniEvents</h5>
+      <p>fine_4 · all · v5_0030</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  <p class="bands">bands: [20, 40, 60, 80]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.634272</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.846117</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.507266</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.749405</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.839818</strong></div><div><span>val_precision</span><strong>0.506151</strong></div><div><span>val_f1</span><strong>0.631626</strong></div><div><span>val_pr_auc</span><strong>0.746356</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.254057</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.531166</strong></div><div><span>val_positive_ratio</span><strong>0.12542</strong></div><div><span>test_positive_ratio</span><strong>0.12542</strong></div><div><span>val_cap_used</span><strong>True</strong></div><div><span>test_cap_used</span><strong>True</strong></div><div><span>n_train</span><strong>42659</strong></div><div><span>n_val</span><strong>100000</strong></div><div><span>n_test</span><strong>100000</strong></div><div><span>tp</span><strong>10612</strong></div><div><span>fp</span><strong>10308</strong></div><div><span>tn</span><strong>77150</strong></div><div><span>fn</span><strong>1930</strong></div><div><span>execution_time</span><strong>5937.79</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>True</strong></div><div><span>TFLite precision</span><strong>0.26098</strong></div><div><span>TFLite recall</span><strong>0.530139</strong></div><div><span>TFLite F1</span><strong>0.349772</strong></div><div><span>TFLite PR-AUC</span><strong>0.321998</strong></div><div><span>Incompatibility reason</span><strong>-</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong><span class="criterion-badge">better F1</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.677325</strong></div><div><span>Recall</span><strong>0.797162</strong></div><div><span>Precision</span><strong>0.58881</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta F1 vs selected</span><strong>+0.0456991</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0426567</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.677325</strong></div><div><span>Recall</span><strong>0.797162</strong></div><div><span>Precision</span><strong>0.58881</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.0826595</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0426567</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.631626</strong></div><div><span>Recall</span><strong>0.839818</strong></div><div><span>Precision</span><strong>0.506151</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>fcfd46e8e4ab</strong></div><div><span>run_id</span><strong>2026-05-29_002</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/fcfd46e8e4ab</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f05_modeling/v5_0030</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f06_quant/v6_0017</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+  </div>
+  <h3>Compact Comparison Table</h3>
+  <table><thead><tr><th>pipeline</th><th>bands_id</th><th>deduplication_mode</th><th>f05_variant</th><th>test_precision_effective</th><th>test_recall_effective</th><th>test_f1_effective</th><th>test_fn_effective</th><th>test_pr_auc_effective</th><th>val_recall_effective</th><th>decision_threshold_effective</th><th>threshold_source_effective</th><th>threshold_policy_effective</th><th>positive_ratio_train</th><th>val_positive_ratio_effective</th><th>test_positive_ratio_effective</th><th>n_train</th><th>n_val</th><th>n_test</th><th>best_by_f1_f1</th><th>best_by_f1_recall</th><th>best_by_f1_precision</th><th>best_by_precision_f1</th><th>best_by_precision_recall</th><th>best_by_precision_precision</th><th>best_by_recall_f1</th><th>best_by_recall_recall</th><th>best_by_recall_precision</th><th>delta_f1_choice_f1_vs_recall_choice</th><th>delta_f1_choice_recall_vs_recall_choice</th><th>delta_precision_choice_precision_vs_recall_choice</th><th>delta_precision_choice_recall_vs_recall_choice</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">ts</td><td class="">no_bands</td><td class="">all</td><td class="">v5_0020</td><td class="">0.586436</td><td class="">0.906785</td><td class="">0.712248</td><td class="">136</td><td class="">0.811637</td><td class="">0.928718</td><td class="">0.981417</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.88729</td><td class="">0.05836</td><td class="">0.05836</td><td class="">177446</td><td class="">25000</td><td class="">25000</td><td class="">0.728255</td><td class="">0.92392</td><td class="">0.600981</td><td class="">0.728255</td><td class="">0.92392</td><td class="">0.600981</td><td class="">0.723245</td><td class="">0.928718</td><td class="">0.59222</td><td class="">0.00500973</td><td class="">-0.00479781</td><td class="">0.00876055</td><td class="">-0.00479781</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/07a4fb22a365</td></tr><tr><td class="">events</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0436</td><td class="">0.680912</td><td class="">0.933927</td><td class="">0.787598</td><td class="">319</td><td class="">0.83609</td><td class="">0.932063</td><td class="">0.938234</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.717921</td><td class="">0.04828</td><td class="">0.04828</td><td class="">70902</td><td class="">100000</td><td class="">100000</td><td class="">0.781857</td><td class="">0.917564</td><td class="">0.681119</td><td class="">0.781857</td><td class="">0.917564</td><td class="">0.681119</td><td class="">0.776464</td><td class="">0.932063</td><td class="">0.665385</td><td class="">0.00539219</td><td class="">-0.0144988</td><td class="">0.0157341</td><td class="">-0.0144988</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/c3e2890d6b4e</td></tr><tr><td class="">uniEvents</td><td class="">fine_4</td><td class="">all</td><td class="">v5_0030</td><td class="">0.507266</td><td class="">0.846117</td><td class="">0.634272</td><td class="">1930</td><td class="">0.749405</td><td class="">0.839818</td><td class="">0.254057</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.531166</td><td class="">0.12542</td><td class="">0.12542</td><td class="">42659</td><td class="">100000</td><td class="">100000</td><td class="">0.677325</td><td class="">0.797162</td><td class="">0.58881</td><td class="">0.677325</td><td class="">0.797162</td><td class="">0.58881</td><td class="">0.631626</td><td class="">0.839818</td><td class="">0.506151</td><td class="">0.0456991</td><td class="">-0.0426567</td><td class="">0.0826595</td><td class="">-0.0426567</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/fcfd46e8e4ab</td></tr></tbody></table>
+</section>
+
+
+<section class="comparison-block">
+  <div class="block-title">
+    <div>
+      <h2>PVPCS_Active_Power <span>high</span> <span>threshold 90</span></h2>
+      <p>Temporal config: OW=600, PW=100, LT=10, strategy=synchro</p>
+    </div>
+  </div>
+  <div class="pipeline-grid">
+    
+<div class="pipeline-column ts">
+  <div class="column-title">TS</div>
+  
+<article class="model-card ts">
+  <div class="card-head">
+    <div>
+      <h5>TS</h5>
+      <p>no_bands · all · v5_0019</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.470588</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.866667</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.322981</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.550033</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.877083</strong></div><div><span>val_precision</span><strong>0.345365</strong></div><div><span>val_f1</span><strong>0.495586</strong></div><div><span>val_pr_auc</span><strong>0.568588</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.931109</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.72132</strong></div><div><span>val_positive_ratio</span><strong>0.0192</strong></div><div><span>test_positive_ratio</span><strong>0.0192</strong></div><div><span>val_cap_used</span><strong>True</strong></div><div><span>test_cap_used</span><strong>True</strong></div><div><span>n_train</span><strong>71767</strong></div><div><span>n_val</span><strong>25000</strong></div><div><span>n_test</span><strong>25000</strong></div><div><span>tp</span><strong>416</strong></div><div><span>fp</span><strong>872</strong></div><div><span>tn</span><strong>23648</strong></div><div><span>fn</span><strong>64</strong></div><div><span>execution_time</span><strong>614.816</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>True</strong></div><div><span>TFLite precision</span><strong>0.323279</strong></div><div><span>TFLite recall</span><strong>0.870833</strong></div><div><span>TFLite F1</span><strong>0.471517</strong></div><div><span>TFLite PR-AUC</span><strong>0.500677</strong></div><div><span>Incompatibility reason</span><strong>-</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.495586</strong></div><div><span>Recall</span><strong>0.877083</strong></div><div><span>Precision</span><strong>0.345365</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta neutral"><span>Delta F1 vs selected</span><strong>0</strong></div><div class="criterion-delta neutral"><span>Delta recall vs selected</span><strong>0</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.495586</strong></div><div><span>Recall</span><strong>0.877083</strong></div><div><span>Precision</span><strong>0.345365</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta neutral"><span>Delta precision vs selected</span><strong>0</strong></div><div class="criterion-delta neutral"><span>Delta recall vs selected</span><strong>0</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.495586</strong></div><div><span>Recall</span><strong>0.877083</strong></div><div><span>Precision</span><strong>0.345365</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>c26973948c5a</strong></div><div><span>run_id</span><strong>2026-05-29_002</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/c26973948c5a</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f05_modeling/v5_0019</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS/executions/f06_quant/v6_0011</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+<div class="pipeline-column events">
+  <div class="column-title">Events</div>
+  
+<article class="model-card events">
+  <div class="card-head">
+    <div>
+      <h5>Events</h5>
+      <p>coarse_10 · all · v5_0434</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  <p class="bands">bands: [10, 20, 30, 40, 50, 60, 70, 80, 90]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.814667</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.983369</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.695372</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.843786</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.989807</strong></div><div><span>val_precision</span><strong>0.702857</strong></div><div><span>val_f1</span><strong>0.822009</strong></div><div><span>val_pr_auc</span><strong>0.841143</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.877095</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.606694</strong></div><div><span>val_positive_ratio</span><strong>0.01864</strong></div><div><span>test_positive_ratio</span><strong>0.01864</strong></div><div><span>val_cap_used</span><strong>True</strong></div><div><span>test_cap_used</span><strong>True</strong></div><div><span>n_train</span><strong>50851</strong></div><div><span>n_val</span><strong>100000</strong></div><div><span>n_test</span><strong>100000</strong></div><div><span>tp</span><strong>1833</strong></div><div><span>fp</span><strong>803</strong></div><div><span>tn</span><strong>97333</strong></div><div><span>fn</span><strong>31</strong></div><div><span>execution_time</span><strong>10181.9</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>False</strong></div><div><span>TFLite precision</span><strong>0.69397</strong></div><div><span>TFLite recall</span><strong>0.98176</strong></div><div><span>TFLite F1</span><strong>0.813153</strong></div><div><span>TFLite PR-AUC</span><strong>0.814718</strong></div><div><span>Incompatibility reason</span><strong>Quantized model input dtype must be int8, uint8 or int16, got float32</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong><span class="criterion-badge">better F1</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.832123</strong></div><div><span>Recall</span><strong>0.983906</strong></div><div><span>Precision</span><strong>0.720912</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta F1 vs selected</span><strong>+0.0101141</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.00590129</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.832123</strong></div><div><span>Recall</span><strong>0.983906</strong></div><div><span>Precision</span><strong>0.720912</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.0180548</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.00590129</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.822009</strong></div><div><span>Recall</span><strong>0.989807</strong></div><div><span>Precision</span><strong>0.702857</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>2b3348f1726b</strong></div><div><span>run_id</span><strong>2026-06-03_001</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/2b3348f1726b</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f05_modeling/v5_0434</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f06_quant/v6_0014</strong></div>
+    </div>
+  </details>
+</article>
+
+<article class="model-card events">
+  <div class="card-head">
+    <div>
+      <h5>Events</h5>
+      <p>dense_mid · all · v5_0435</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  <p class="bands">bands: [10, 25, 50, 75, 90]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.767446</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.933971</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.651318</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.826679</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.936248</strong></div><div><span>val_precision</span><strong>0.640498</strong></div><div><span>val_f1</span><strong>0.760636</strong></div><div><span>val_pr_auc</span><strong>0.841106</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.909953</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.479289</strong></div><div><span>val_positive_ratio</span><strong>0.02196</strong></div><div><span>test_positive_ratio</span><strong>0.02196</strong></div><div><span>val_cap_used</span><strong>True</strong></div><div><span>test_cap_used</span><strong>True</strong></div><div><span>n_train</span><strong>38409</strong></div><div><span>n_val</span><strong>100000</strong></div><div><span>n_test</span><strong>100000</strong></div><div><span>tp</span><strong>2051</strong></div><div><span>fp</span><strong>1098</strong></div><div><span>tn</span><strong>96706</strong></div><div><span>fn</span><strong>145</strong></div><div><span>execution_time</span><strong>11269.7</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>False</strong></div><div><span>TFLite precision</span><strong>0.647281</strong></div><div><span>TFLite recall</span><strong>0.937614</strong></div><div><span>TFLite F1</span><strong>0.765855</strong></div><div><span>TFLite PR-AUC</span><strong>0.791639</strong></div><div><span>Incompatibility reason</span><strong>Quantized model input dtype must be int8, uint8 or int16, got float32</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong><span class="criterion-badge">better F1</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.789464</strong></div><div><span>Recall</span><strong>0.934882</strong></div><div><span>Precision</span><strong>0.683195</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta F1 vs selected</span><strong>+0.0288272</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.00136612</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.783501</strong></div><div><span>Recall</span><strong>0.903916</strong></div><div><span>Precision</span><strong>0.691397</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.0508983</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0323315</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.760636</strong></div><div><span>Recall</span><strong>0.936248</strong></div><div><span>Precision</span><strong>0.640498</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>8943e0beb8ee</strong></div><div><span>run_id</span><strong>2026-06-03_001</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/8943e0beb8ee</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f05_modeling/v5_0435</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge/executions/f06_quant/v6_0015</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+<div class="pipeline-column uniEvents">
+  <div class="column-title">UniEvents</div>
+  
+<article class="model-card uniEvents">
+  <div class="card-head">
+    <div>
+      <h5>UniEvents</h5>
+      <p>coarse_10 · all · v5_0028</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  <span class="badge best">Best F1 in block</span>
+  <p class="bands">bands: [10, 20, 30, 40, 50, 60, 70, 80, 90]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.815137</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.941426</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.718723</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.906494</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.942321</strong></div><div><span>val_precision</span><strong>0.717813</strong></div><div><span>val_f1</span><strong>0.814886</strong></div><div><span>val_pr_auc</span><strong>0.913623</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.221686</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.485729</strong></div><div><span>val_positive_ratio</span><strong>0.04473</strong></div><div><span>test_positive_ratio</span><strong>0.04473</strong></div><div><span>val_cap_used</span><strong>True</strong></div><div><span>test_cap_used</span><strong>True</strong></div><div><span>n_train</span><strong>38890</strong></div><div><span>n_val</span><strong>100000</strong></div><div><span>n_test</span><strong>100000</strong></div><div><span>tp</span><strong>4211</strong></div><div><span>fp</span><strong>1648</strong></div><div><span>tn</span><strong>93879</strong></div><div><span>fn</span><strong>262</strong></div><div><span>execution_time</span><strong>8142.68</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>True</strong></div><div><span>TFLite precision</span><strong>0.16198</strong></div><div><span>TFLite recall</span><strong>0.526716</strong></div><div><span>TFLite F1</span><strong>0.247765</strong></div><div><span>TFLite PR-AUC</span><strong>0.300322</strong></div><div><span>Incompatibility reason</span><strong>-</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong><span class="criterion-badge">better F1</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.860368</strong></div><div><span>Recall</span><strong>0.920188</strong></div><div><span>Precision</span><strong>0.807851</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta F1 vs selected</span><strong>+0.0454815</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0221328</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.860368</strong></div><div><span>Recall</span><strong>0.920188</strong></div><div><span>Precision</span><strong>0.807851</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.0900375</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.0221328</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.814886</strong></div><div><span>Recall</span><strong>0.942321</strong></div><div><span>Precision</span><strong>0.717813</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>7e24fa90ec4c</strong></div><div><span>run_id</span><strong>2026-05-29_002</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/7e24fa90ec4c</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f05_modeling/v5_0028</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f06_quant/v6_0015</strong></div>
+    </div>
+  </details>
+</article>
+
+<article class="model-card uniEvents">
+  <div class="card-head">
+    <div>
+      <h5>UniEvents</h5>
+      <p>dense_mid · all · v5_0029</p>
+    </div>
+    <span class="status">COMPLETED</span>
+  </div>
+  
+  <p class="bands">bands: [10, 25, 50, 75, 90]</p>
+  <div class="main-metrics">
+    <div class="metric"><span>F1</span><strong>0.731623</strong></div>
+    <div class="metric"><span>Recall</span><strong>0.817947</strong></div>
+    <div class="metric"><span>Precision</span><strong>0.66178</strong></div>
+    <div class="metric"><span>PR-AUC</span><strong>0.794179</strong></div>
+  </div>
+  <div class="kv-grid">
+    <div><span>val_recall</span><strong>0.825712</strong></div><div><span>val_precision</span><strong>0.676445</strong></div><div><span>val_f1</span><strong>0.743662</strong></div><div><span>val_pr_auc</span><strong>0.802629</strong></div><div><span>deduplication_mode</span><strong>all</strong></div><div><span>decision_threshold</span><strong>0.320734</strong></div><div><span>threshold_source</span><strong>validation</strong></div><div><span>threshold_policy</span><strong>optimal_f2</strong></div><div><span>positive_ratio_train</span><strong>0.390207</strong></div><div><span>val_positive_ratio</span><strong>0.04636</strong></div><div><span>test_positive_ratio</span><strong>0.04636</strong></div><div><span>val_cap_used</span><strong>True</strong></div><div><span>test_cap_used</span><strong>True</strong></div><div><span>n_train</span><strong>32798</strong></div><div><span>n_val</span><strong>100000</strong></div><div><span>n_test</span><strong>100000</strong></div><div><span>tp</span><strong>3792</strong></div><div><span>fp</span><strong>1938</strong></div><div><span>tn</span><strong>93426</strong></div><div><span>fn</span><strong>844</strong></div><div><span>execution_time</span><strong>3992.86</strong></div>
+  </div>
+  
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      <div><span>TFLM compatible</span><strong>True</strong></div><div><span>TFLite precision</span><strong>0.576606</strong></div><div><span>TFLite recall</span><strong>0.301984</strong></div><div><span>TFLite F1</span><strong>0.396376</strong></div><div><span>TFLite PR-AUC</span><strong>0.309875</strong></div><div><span>Incompatibility reason</span><strong>-</strong></div>
+    </div>
+  </section>
+
+  
+  <details class="criterion-details">
+    <summary>Selection criteria comparison</summary>
+    <p class="criterion-note">The final model is still selected by recall. This comparison shows the validation metrics that would result from selecting by F1 or precision, to evaluate whether the decision criterion should change.</p>
+    <div class="criterion-grid">
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by F1</strong><span class="criterion-badge">better F1</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.751209</strong></div><div><span>Recall</span><strong>0.820966</strong></div><div><span>Precision</span><strong>0.692378</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta F1 vs selected</span><strong>+0.00754695</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.00474547</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Precision</strong><span class="criterion-badge">better precision</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.751209</strong></div><div><span>Recall</span><strong>0.820966</strong></div><div><span>Precision</span><strong>0.692378</strong></div>
+        </div>
+        <div class="criterion-deltas"><div class="criterion-delta positive"><span>Delta precision vs selected</span><strong>+0.0159331</strong></div><div class="criterion-delta negative"><span>Delta recall vs selected</span><strong>-0.00474547</strong></div></div>
+      </div>
+    
+      
+      <div class="criterion-card">
+        <div class="criterion-title"><strong>Best by Recall</strong><span class="criterion-badge">selected</span></div>
+        <div class="criterion-values">
+          <div><span>F1</span><strong>0.743662</strong></div><div><span>Recall</span><strong>0.825712</strong></div><div><span>Precision</span><strong>0.676445</strong></div>
+        </div>
+        
+      </div>
+    
+    </div>
+  </details>
+
+  <details>
+    <summary>Traceability</summary>
+    <div class="trace">
+      <div><span>job_key</span><strong>14aef80554ab</strong></div><div><span>run_id</span><strong>2026-05-29_002</strong></div><div><span>local_output_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/14aef80554ab</strong></div><div><span>f05_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f05_modeling/v5_0029</strong></div><div><span>f06_path</span><strong>C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni/executions/f06_quant/v6_0016</strong></div>
+    </div>
+  </details>
+</article>
+
+</div>
+
+  </div>
+  <h3>Compact Comparison Table</h3>
+  <table><thead><tr><th>pipeline</th><th>bands_id</th><th>deduplication_mode</th><th>f05_variant</th><th>test_precision_effective</th><th>test_recall_effective</th><th>test_f1_effective</th><th>test_fn_effective</th><th>test_pr_auc_effective</th><th>val_recall_effective</th><th>decision_threshold_effective</th><th>threshold_source_effective</th><th>threshold_policy_effective</th><th>positive_ratio_train</th><th>val_positive_ratio_effective</th><th>test_positive_ratio_effective</th><th>n_train</th><th>n_val</th><th>n_test</th><th>best_by_f1_f1</th><th>best_by_f1_recall</th><th>best_by_f1_precision</th><th>best_by_precision_f1</th><th>best_by_precision_recall</th><th>best_by_precision_precision</th><th>best_by_recall_f1</th><th>best_by_recall_recall</th><th>best_by_recall_precision</th><th>delta_f1_choice_f1_vs_recall_choice</th><th>delta_f1_choice_recall_vs_recall_choice</th><th>delta_precision_choice_precision_vs_recall_choice</th><th>delta_precision_choice_recall_vs_recall_choice</th><th>local_output_path</th></tr></thead><tbody><tr><td class="">ts</td><td class="">no_bands</td><td class="">all</td><td class="">v5_0019</td><td class="">0.322981</td><td class="">0.866667</td><td class="">0.470588</td><td class="">64</td><td class="">0.550033</td><td class="">0.877083</td><td class="">0.931109</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.72132</td><td class="">0.0192</td><td class="">0.0192</td><td class="">71767</td><td class="">25000</td><td class="">25000</td><td class="">0.495586</td><td class="">0.877083</td><td class="">0.345365</td><td class="">0.495586</td><td class="">0.877083</td><td class="">0.345365</td><td class="">0.495586</td><td class="">0.877083</td><td class="">0.345365</td><td class="">0</td><td class="">0</td><td class="">0</td><td class="">0</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/ts/c26973948c5a</td></tr><tr><td class="">events</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0434</td><td class="">0.695372</td><td class="">0.983369</td><td class="">0.814667</td><td class="">31</td><td class="">0.843786</td><td class="">0.989807</td><td class="">0.877095</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.606694</td><td class="">0.01864</td><td class="">0.01864</td><td class="">50851</td><td class="">100000</td><td class="">100000</td><td class="">0.832123</td><td class="">0.983906</td><td class="">0.720912</td><td class="">0.832123</td><td class="">0.983906</td><td class="">0.720912</td><td class="">0.822009</td><td class="">0.989807</td><td class="">0.702857</td><td class="">0.0101141</td><td class="">-0.00590129</td><td class="">0.0180548</td><td class="">-0.00590129</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/2b3348f1726b</td></tr><tr><td class="">events</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0435</td><td class="">0.651318</td><td class="">0.933971</td><td class="">0.767446</td><td class="">145</td><td class="">0.826679</td><td class="">0.936248</td><td class="">0.909953</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.479289</td><td class="">0.02196</td><td class="">0.02196</td><td class="">38409</td><td class="">100000</td><td class="">100000</td><td class="">0.789464</td><td class="">0.934882</td><td class="">0.683195</td><td class="">0.783501</td><td class="">0.903916</td><td class="">0.691397</td><td class="">0.760636</td><td class="">0.936248</td><td class="">0.640498</td><td class="">0.0288272</td><td class="">-0.00136612</td><td class="">0.0508983</td><td class="">-0.0323315</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-06-03_001/outputs/events/8943e0beb8ee</td></tr><tr><td class="">uniEvents</td><td class="">coarse_10</td><td class="">all</td><td class="">v5_0028</td><td class="">0.718723</td><td class="">0.941426</td><td class="">0.815137</td><td class="">262</td><td class="">0.906494</td><td class="">0.942321</td><td class="">0.221686</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.485729</td><td class="">0.04473</td><td class="">0.04473</td><td class="">38890</td><td class="">100000</td><td class="">100000</td><td class="">0.860368</td><td class="">0.920188</td><td class="">0.807851</td><td class="">0.860368</td><td class="">0.920188</td><td class="">0.807851</td><td class="">0.814886</td><td class="">0.942321</td><td class="">0.717813</td><td class="">0.0454815</td><td class="">-0.0221328</td><td class="">0.0900375</td><td class="">-0.0221328</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/7e24fa90ec4c</td></tr><tr><td class="">uniEvents</td><td class="">dense_mid</td><td class="">all</td><td class="">v5_0029</td><td class="">0.66178</td><td class="">0.817947</td><td class="">0.731623</td><td class="">844</td><td class="">0.794179</td><td class="">0.825712</td><td class="">0.320734</td><td class="">validation</td><td class="">optimal_f2</td><td class="">0.390207</td><td class="">0.04636</td><td class="">0.04636</td><td class="">32798</td><td class="">100000</td><td class="">100000</td><td class="">0.751209</td><td class="">0.820966</td><td class="">0.692378</td><td class="">0.751209</td><td class="">0.820966</td><td class="">0.692378</td><td class="">0.743662</td><td class="">0.825712</td><td class="">0.676445</td><td class="">0.00754695</td><td class="">-0.00474547</td><td class="">0.0159331</td><td class="">-0.00474547</td><td class="path">C:/Users/inesv/Desktop/STRAST/mlops4rtedge-comparisons/runs/2026-05-29_002/outputs/uniEvents/14aef80554ab</td></tr></tbody></table>
+</section>
+
+    </section>
+  </main>
+</body>
+</html>

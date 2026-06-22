@@ -10,6 +10,8 @@ from typing import Any
 
 import yaml
 
+import build_model_index
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODEL_INDEX_PATH = REPO_ROOT / "registry" / "model_index.yaml"
@@ -33,6 +35,11 @@ F05_METRIC_KEYS = [
     "test_tn",
     "test_fp",
     "test_fn",
+    "val_pr_auc",
+    "test_pr_auc",
+    "pr_auc",
+    "average_precision",
+    "test_average_precision",
     "val_precision_at_threshold",
     "val_recall_at_threshold",
     "val_f1_at_threshold",
@@ -91,6 +98,8 @@ BLOCK_TABLE_COLUMNS = [
     "test_precision_effective",
     "test_recall_effective",
     "test_f1_effective",
+    "test_fn_effective",
+    "test_pr_auc_effective",
     "val_recall_effective",
     "decision_threshold_effective",
     "threshold_source_effective",
@@ -114,6 +123,22 @@ def load_model_index(path: Path = MODEL_INDEX_PATH) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError(f"Invalid model index YAML: {path}")
     return data
+
+
+def rebuild_model_index(path: Path = MODEL_INDEX_PATH) -> None:
+    manifest_paths = build_model_index.find_manifest_paths()
+    source_manifests = list(manifest_paths)
+    rows = build_model_index.read_manifest_rows(manifest_paths, include_failed=False) if manifest_paths else []
+    exported_manifest = build_model_index.DEFAULT_EXPORTED_MANIFEST
+    exported_rows = build_model_index.read_exported_manifest_rows(exported_manifest)
+    if exported_rows:
+        rows.extend(exported_rows)
+        source_manifests.append(exported_manifest)
+    if not rows:
+        print("No valid manifest rows found.")
+    index = build_model_index.build_index(rows, source_manifests)
+    build_model_index.write_yaml(index, path)
+    print(f"Wrote {path.relative_to(REPO_ROOT)} with {index['summary']['n_models']} models.")
 
 
 def load_yaml(path: Path | None) -> dict[str, Any]:
@@ -246,9 +271,12 @@ def extract_f05_metrics(outputs: dict[str, Any]) -> dict[str, Any]:
         "test_precision_effective": first_available(metrics, "test_precision", "test_precision_at_threshold"),
         "test_recall_effective": first_available(metrics, "test_recall", "test_recall_at_threshold"),
         "test_f1_effective": first_available(metrics, "test_f1", "test_f1_at_threshold"),
+        "test_fn_effective": first_available(metrics, "test_fn", "fn"),
+        "test_pr_auc_effective": first_available(metrics, "test_pr_auc", "pr_auc", "test_average_precision", "average_precision"),
         "val_precision_effective": first_available(metrics, "val_precision", "val_precision_at_threshold"),
         "val_recall_effective": first_available(metrics, "val_recall", "val_recall_at_threshold", "best_val_recall"),
         "val_f1_effective": first_available(metrics, "val_f1", "val_f1_at_threshold"),
+        "val_pr_auc_effective": first_available(metrics, "val_pr_auc"),
         "decision_threshold_effective": first_available(metrics, "decision_threshold", "selected_threshold"),
         "threshold_source_effective": first_available(metrics, "threshold_source"),
         "threshold_policy_effective": first_available(metrics, "threshold_policy"),
@@ -274,17 +302,34 @@ def extract_f04_metrics(outputs: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def extract_f06_metrics(outputs: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "tflm_compatible": walk_values(outputs, "tflm_compatible"),
+        "incompatibility_reason": walk_values(outputs, "incompatibility_reason"),
+        "tflite_test_precision": walk_values(outputs, "tflite_test_precision"),
+        "tflite_test_recall": walk_values(outputs, "tflite_test_recall"),
+        "tflite_test_f1": walk_values(outputs, "tflite_test_f1"),
+        "tflite_test_pr_auc": walk_values(outputs, "tflite_test_pr_auc"),
+    }
+
+
 def load_metrics_for_model(model: dict[str, Any]) -> dict[str, Any]:
     output_root = local_path(model.get("local_output_path"))
     variant_paths = model.get("variant_paths") or {}
     f05_outputs = load_yaml(output_root / "f05" / "outputs.yaml") if output_root else {}
     f04_outputs = load_yaml(output_root / "f04" / "outputs.yaml") if output_root else {}
+    f06_outputs = load_yaml(output_root / "f06" / "outputs.yaml") if output_root else {}
     if not f05_outputs:
         f05_outputs = load_yaml(local_path(variant_paths.get("f05")) / "outputs.yaml" if variant_paths.get("f05") else None)
     if not f04_outputs:
         f04_outputs = load_yaml(local_path(variant_paths.get("f04")) / "outputs.yaml" if variant_paths.get("f04") else None)
+    if not f06_outputs:
+        f06_outputs = load_yaml(local_path(variant_paths.get("f06")) / "outputs.yaml" if variant_paths.get("f06") else None)
+    if not f05_outputs and isinstance(model.get("metrics"), dict):
+        f05_outputs = model["metrics"]
     metrics = extract_f05_metrics(f05_outputs)
     metrics.update(extract_f04_metrics(f04_outputs))
+    metrics.update(extract_f06_metrics(f06_outputs))
     return metrics
 
 
@@ -347,8 +392,10 @@ def flatten_models_from_index(index: dict[str, Any]) -> list[dict[str, Any]]:
                                     "run_id": model.get("run_id"),
                                     "status": model.get("status"),
                                     "f05_variant": variants.get("f05"),
+                                    "f06_variant": variants.get("f06"),
                                     "local_output_path": normalize_path(model.get("local_output_path")),
                                     "f05_path": normalize_path(variant_paths.get("f05")),
+                                    "f06_path": normalize_path(variant_paths.get("f06")),
                                 }
                                 row.update(load_metrics_for_model(model))
                                 rows.append(row)
@@ -512,6 +559,37 @@ def render_criterion_comparison(row: dict[str, Any]) -> str:
 """
 
 
+def has_f06_metrics(row: dict[str, Any]) -> bool:
+    return any(row.get(key) not in (None, "") for key in [
+        "tflm_compatible",
+        "tflite_test_precision",
+        "tflite_test_recall",
+        "tflite_test_f1",
+        "tflite_test_pr_auc",
+    ])
+
+
+def render_f06_section(row: dict[str, Any]) -> str:
+    if not has_f06_metrics(row):
+        return ""
+    metrics = [
+        ("TFLM compatible", row.get("tflm_compatible")),
+        ("TFLite precision", row.get("tflite_test_precision")),
+        ("TFLite recall", row.get("tflite_test_recall")),
+        ("TFLite F1", row.get("tflite_test_f1")),
+        ("TFLite PR-AUC", row.get("tflite_test_pr_auc")),
+        ("Incompatibility reason", row.get("incompatibility_reason")),
+    ]
+    return f"""
+  <section class="f06-section">
+    <h6>Phase 6 - TFLite/TFLM</h6>
+    <div class="f06-grid">
+      {''.join(render_kv(label, value) for label, value in metrics)}
+    </div>
+  </section>
+"""
+
+
 def render_model_card(row: dict[str, Any], is_best: bool) -> str:
     pipeline = row.get("pipeline")
     class_name = f"model-card {pipeline}"
@@ -523,6 +601,7 @@ def render_model_card(row: dict[str, Any], is_best: bool) -> str:
         ("val_recall", row.get("val_recall_effective")),
         ("val_precision", row.get("val_precision_effective")),
         ("val_f1", row.get("val_f1_effective")),
+        ("val_pr_auc", row.get("val_pr_auc_effective")),
         ("deduplication_mode", row.get("deduplication_mode")),
         ("decision_threshold", row.get("decision_threshold_effective")),
         ("threshold_source", row.get("threshold_source_effective")),
@@ -538,7 +617,7 @@ def render_model_card(row: dict[str, Any], is_best: bool) -> str:
         ("tp", row.get("tp")),
         ("fp", row.get("fp")),
         ("tn", row.get("tn")),
-        ("fn", row.get("fn")),
+        ("fn", row.get("test_fn_effective")),
         ("execution_time", row.get("execution_time")),
     ]
     trace = [
@@ -546,6 +625,7 @@ def render_model_card(row: dict[str, Any], is_best: bool) -> str:
         ("run_id", row.get("run_id")),
         ("local_output_path", row.get("local_output_path")),
         ("f05_path", row.get("f05_path")),
+        ("f06_path", row.get("f06_path")),
     ]
     return f"""
 <article class="{class_name}">
@@ -562,10 +642,12 @@ def render_model_card(row: dict[str, Any], is_best: bool) -> str:
     {render_metric("F1", row.get("test_f1_effective"))}
     {render_metric("Recall", row.get("test_recall_effective"))}
     {render_metric("Precision", row.get("test_precision_effective"))}
+    {render_metric("PR-AUC", row.get("test_pr_auc_effective"))}
   </div>
   <div class="kv-grid">
     {''.join(render_kv(label, value) for label, value in secondary)}
   </div>
+  {render_f06_section(row)}
   {render_criterion_comparison(row)}
   <details>
     <summary>Traceability</summary>
@@ -628,13 +710,35 @@ def render_comparison_block(key: tuple[str, str, str, str], block: dict[str, lis
 """
 
 
+def render_measure_details(measure: str, items: list[tuple[tuple[str, str, str, str], dict[str, list[dict[str, Any]]]]]) -> str:
+    block_count = len(items)
+    model_count = sum(
+        len(rows)
+        for _, block in items
+        for rows in block.values()
+    )
+    blocks_html = "\n".join(render_comparison_block(key, block) for key, block in items)
+    return f"""
+<details class="measure-details">
+  <summary>
+    <span class="measure-name">{esc(measure)}</span>
+    <span class="measure-meta">{esc(block_count)} comparison blocks &middot; {esc(model_count)} models</span>
+  </summary>
+  <div class="measure-blocks">
+    {blocks_html}
+  </div>
+</details>
+"""
+
+
 def render_rankings(rows: list[dict[str, Any]]) -> str:
-    columns = ["measure", "direction", "effective_threshold", "temporal_config_id", "pipeline", "bands_id", "deduplication_mode", "f05_variant", "test_precision_effective", "test_recall_effective", "test_f1_effective", "decision_threshold_effective", "threshold_source_effective", "threshold_policy_effective", "local_output_path"]
+    columns = ["measure", "direction", "effective_threshold", "temporal_config_id", "pipeline", "bands_id", "deduplication_mode", "f05_variant", "test_precision_effective", "test_recall_effective", "test_fn_effective", "test_pr_auc_effective", "test_f1_effective", "decision_threshold_effective", "threshold_source_effective", "threshold_policy_effective", "local_output_path"]
     parts = []
     for metric, title in [
         ("test_f1_effective", "Top 10 by test_f1"),
         ("test_recall_effective", "Top 10 by test_recall"),
         ("test_precision_effective", "Top 10 by test_precision"),
+        ("test_pr_auc_effective", "Top 10 by test_pr_auc"),
     ]:
         ranked = build_rankings(rows, metric)
         header = "".join(f"<th>{esc(col)}</th>" for col in columns)
@@ -678,10 +782,15 @@ def render_html(index: dict[str, Any], rows: list[dict[str, Any]]) -> str:
         f'<div class="mini-stat {pipeline}"><span>{esc(PIPELINE_LABELS.get(pipeline, pipeline))}</span><strong>{esc(pipeline_counts.get(pipeline, 0))}</strong></div>'
         for pipeline in PIPELINE_ORDER
     )
-    block_parts = []
-    for key in sorted(grouped, key=lambda item: (item[0], direction_sort_value(item[1]), threshold_sort_value(item[2]), item[3])):
-        block_parts.append(render_comparison_block(key, grouped[key]))
-    blocks_html = "\n".join(block_parts) if block_parts else '<p class="muted">No models in model_index.yaml.</p>'
+    measure_groups: dict[str, list[tuple[tuple[str, str, str, str], dict[str, list[dict[str, Any]]]]]] = {}
+    sorted_keys = sorted(grouped, key=lambda item: (item[0], direction_sort_value(item[1]), threshold_sort_value(item[2]), item[3]))
+    for key in sorted_keys:
+        measure_groups.setdefault(key[0], []).append((key, grouped[key]))
+    blocks_html = (
+        "\n".join(render_measure_details(measure, measure_groups[measure]) for measure in sorted(measure_groups))
+        if measure_groups
+        else '<p class="muted">No models in model_index.yaml.</p>'
+    )
 
     return f"""<!doctype html>
 <html lang="en">
@@ -709,7 +818,13 @@ def render_html(index: dict[str, Any], rows: list[dict[str, Any]]) -> str:
     .mini-stat.uniEvents {{ background: var(--uniEvents); border-color: var(--uniEvents-border); }}
     .rankings {{ margin-top: 24px; }}
     .ranking {{ background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 16px; overflow-x: auto; }}
-    .comparison-block {{ margin-top: 26px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px; box-shadow: 0 8px 22px rgba(20, 45, 70, .06); }}
+    .measure-details {{ background: var(--paper); border: 1px solid var(--line); border-radius: 10px; margin-top: 16px; box-shadow: 0 8px 22px rgba(20, 45, 70, .05); }}
+    .measure-details > summary {{ display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; font-size: 15px; }}
+    .measure-details > summary::marker {{ color: #627d98; }}
+    .measure-name {{ color: #102a43; font-size: 18px; }}
+    .measure-meta {{ color: var(--muted); font-size: 12px; font-weight: 600; }}
+    .measure-blocks {{ border-top: 1px solid var(--line); padding: 0 18px 18px; }}
+    .comparison-block {{ margin-top: 18px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px; box-shadow: 0 8px 22px rgba(20, 45, 70, .06); }}
     .block-title h2 {{ margin: 0; font-size: 21px; }}
     .block-title h2 span {{ margin-left: 8px; color: var(--muted); font-weight: 600; }}
     .block-title p {{ margin: 8px 0 0; color: var(--muted); }}
@@ -725,10 +840,15 @@ def render_html(index: dict[str, Any], rows: list[dict[str, Any]]) -> str:
     .card-head p, .bands {{ margin: 4px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }}
     .status, .badge {{ border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 3px 8px; font-size: 11px; white-space: nowrap; }}
     .badge.best {{ display: inline-block; margin: 9px 0; background: #fff7cc; border-color: #e2c044; font-weight: 700; }}
-    .main-metrics {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }}
+    .main-metrics {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }}
     .metric {{ background: #fff; border: 1px solid var(--line); border-radius: 7px; padding: 9px; }}
     .metric span {{ display: block; color: var(--muted); font-size: 11px; }}
     .metric strong {{ display: block; font-size: 18px; margin-top: 3px; }}
+    .f06-section {{ background: #f8fbff; border: 1px solid var(--line); border-radius: 7px; margin: 10px 0; padding: 9px; }}
+    .f06-section h6 {{ margin: 0 0 8px; color: #102a43; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }}
+    .f06-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; font-size: 12px; }}
+    .f06-grid span {{ display: block; color: var(--muted); }}
+    .f06-grid strong {{ overflow-wrap: anywhere; }}
     .criterion-analysis {{ margin-top: 24px; }}
     .criterion-details {{ border-top: 1px solid var(--line); padding-top: 9px; }}
     .criterion-note {{ font-size: 12px; line-height: 1.4; }}
@@ -790,6 +910,7 @@ def write_report(html_text: str, path: Path = REPORT_PATH) -> None:
 
 def main() -> None:
     try:
+        rebuild_model_index()
         index = load_model_index()
         rows = flatten_models_from_index(index)
         html_text = render_html(index, rows)
