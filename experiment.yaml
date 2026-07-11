@@ -2,14 +2,14 @@ experiment:
   name: compare_ts_vs_events_bands
 
 repos:
-  ts: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS
-  events: C:/Users/inesv/Desktop/STRAST/mlops4rtedge
-  uniEvents: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni
+  # ts: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS
+  events: C:/Users/inesv/Desktop/STRAST/BATH/mlops4rtedge
+  # uniEvents: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni
 
 parents:
-  ts_f01: v1_0000
-  events_f01: v1_0000
-  uniEvents_f01: v1_0000
+  #ts_f01: v1_0000
+  events_f01: v1_0003
+  #uniEvents_f01: v1_0000
 
 base:
   event_strategy: transitions
@@ -32,11 +32,36 @@ base:
 
 grid:
   measures:
-    - GE_Active_Power
-    - Outlet_Temperature
-    - PVPCS_Active_Power
-    - MG-LV-MSB_AC_Voltage
-    - Inlet_Temperature_of_Chilled_Water
+    - ac_voltage
+    - ac_frequency
+    - pv_input_voltage
+    - pv_input_power
+    - output_apparent_power
+    - output_active_power
+    - battery_voltage
+    - battery_capacity
+    - charging_current
+    - battery_discharge_current
+    - output_voltage
+    - output_frequency
+    - total_charging_current
+    - total_output_apparent_power
+    - total_output_active_power
+    - total_output_percent
+    - pv_current
+    - load_current_apparent_power
+    - battery_power
+    - battery_power_cha
+    - battery_power_plus_pv_power
+    - pct_pv
+    - pct_battery
+    - total
+    - pv_power_to_load
+    - pvbatpowertoload
+    - losses
+    - losses_pct
+    - fp
+
 
   deduplication_modes: 
     - none
@@ -47,22 +72,28 @@ grid:
 
   temporal_configs:
     - id: ow50_lt10_pw10
-      OW: 50
-      LT: 10
-      PW: 10
+      OW: 5
+      LT: 1
+      PW: 1
+      window_strategy: synchro
+      nan_mode: discard
+
+    - id: ow90_lt10_pw10
+      OW: 9
+      LT: 1
+      PW: 1
       window_strategy: synchro
       nan_mode: discard
 
   event_band_sets:
-    - id: coarse_10
-      values: [10, 20, 30, 40, 50, 60, 70, 80, 90]
-    - id: fine_4
-      values: [20, 40, 60, 80]
+    - id: coarse_5_rare
+      values: [10, 25, 50, 75, 90]
+
 
 pipelines:
-  - ts
+  #- ts
   - events
-  - uniEvents
+  #- uniEvents
 
 
 outputs:

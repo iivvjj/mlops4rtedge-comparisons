@@ -95,6 +95,11 @@ BLOCK_TABLE_COLUMNS = [
     "bands_id",
     "deduplication_mode",
     "f05_variant",
+    "f05_compatible",
+    "f05_incompatibility_reason",
+    "f06_variant",
+    "tflm_compatible",
+    "f06_incompatibility_reason",
     "test_precision_effective",
     "test_recall_effective",
     "test_f1_effective",
@@ -224,6 +229,23 @@ def first_available(mapping: dict[str, Any], *keys: str) -> Any:
     return None
 
 
+def normalize_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if value in (None, ""):
+        return None
+    text = str(value).strip().lower()
+    if text in {"true", "1", "yes", "y", "si", "sí"}:
+        return True
+    if text in {"false", "0", "no", "n"}:
+        return False
+    return None
+
+
+def falseish(value: Any) -> bool:
+    return normalize_bool(value) is False
+
+
 def nested_metric(block: Any, metric: str) -> float | None:
     if not isinstance(block, dict):
         return None
@@ -267,7 +289,27 @@ def extract_criterion_metrics(outputs: dict[str, Any]) -> dict[str, Any]:
 def extract_f05_metrics(outputs: dict[str, Any]) -> dict[str, Any]:
     metrics = {key: walk_values(outputs, key) for key in F05_METRIC_KEYS}
     metrics.update(extract_criterion_metrics(outputs))
+    trainable = walk_values(outputs, "trainable")
+    f05_reason = first_available(
+        {
+            "incompatibility_reason": walk_values(outputs, "incompatibility_reason"),
+            "training_skip_reason": walk_values(outputs, "training_skip_reason"),
+            "skip_reason": walk_values(outputs, "skip_reason"),
+            "failure_reason": walk_values(outputs, "failure_reason"),
+            "error_message": walk_values(outputs, "error_message"),
+            "error": walk_values(outputs, "error"),
+        },
+        "incompatibility_reason",
+        "training_skip_reason",
+        "skip_reason",
+        "failure_reason",
+        "error_message",
+        "error",
+    )
     metrics.update({
+        "f05_trainable": trainable,
+        "f05_compatible": normalize_bool(trainable) if trainable not in (None, "") else None,
+        "f05_incompatibility_reason": f05_reason,
         "test_precision_effective": first_available(metrics, "test_precision", "test_precision_at_threshold"),
         "test_recall_effective": first_available(metrics, "test_recall", "test_recall_at_threshold"),
         "test_f1_effective": first_available(metrics, "test_f1", "test_f1_at_threshold"),
@@ -303,9 +345,11 @@ def extract_f04_metrics(outputs: dict[str, Any]) -> dict[str, Any]:
 
 
 def extract_f06_metrics(outputs: dict[str, Any]) -> dict[str, Any]:
+    reason = walk_values(outputs, "incompatibility_reason")
     return {
         "tflm_compatible": walk_values(outputs, "tflm_compatible"),
-        "incompatibility_reason": walk_values(outputs, "incompatibility_reason"),
+        "f06_incompatibility_reason": reason,
+        "incompatibility_reason": reason,
         "tflite_test_precision": walk_values(outputs, "tflite_test_precision"),
         "tflite_test_recall": walk_values(outputs, "tflite_test_recall"),
         "tflite_test_f1": walk_values(outputs, "tflite_test_f1"),
@@ -330,6 +374,18 @@ def load_metrics_for_model(model: dict[str, Any]) -> dict[str, Any]:
     metrics = extract_f05_metrics(f05_outputs)
     metrics.update(extract_f04_metrics(f04_outputs))
     metrics.update(extract_f06_metrics(f06_outputs))
+    if not f05_outputs and (variant_paths.get("f05") or (model.get("variants") or {}).get("f05")):
+        metrics["f05_compatible"] = "unknown"
+        metrics["f05_incompatibility_reason"] = "Phase 5 outputs.yaml not found; compatibility could not be evaluated."
+    if not f06_outputs and (variant_paths.get("f06") or (model.get("variants") or {}).get("f06")):
+        metrics["tflm_compatible"] = "unknown"
+        metrics["f06_incompatibility_reason"] = "Phase 6 outputs.yaml not found; TFLM compatibility could not be evaluated."
+        metrics["incompatibility_reason"] = metrics["f06_incompatibility_reason"]
+    if falseish(metrics.get("f05_compatible")) and metrics.get("f05_incompatibility_reason") in (None, ""):
+        metrics["f05_incompatibility_reason"] = "Phase 5 marked the model as not trainable/compatible, but did not provide a reason."
+    if falseish(metrics.get("tflm_compatible")) and metrics.get("f06_incompatibility_reason") in (None, ""):
+        metrics["f06_incompatibility_reason"] = "Phase 6 marked the model as not TFLM-compatible, but did not provide a reason."
+        metrics["incompatibility_reason"] = metrics["f06_incompatibility_reason"]
     return metrics
 
 
@@ -559,9 +615,33 @@ def render_criterion_comparison(row: dict[str, Any]) -> str:
 """
 
 
+def has_f05_compatibility_note(row: dict[str, Any]) -> bool:
+    return falseish(row.get("f05_compatible")) or row.get("f05_incompatibility_reason") not in (None, "")
+
+
+def render_f05_section(row: dict[str, Any]) -> str:
+    if not has_f05_compatibility_note(row):
+        return ""
+    metrics = [
+        ("F05 compatible", row.get("f05_compatible")),
+        ("Trainable", row.get("f05_trainable")),
+        ("Reason", row.get("f05_incompatibility_reason")),
+    ]
+    return f"""
+  <section class="phase-compat-section phase-compat-warning">
+    <h6>Phase 5 - Model Training</h6>
+    <div class="phase-compat-grid">
+      {''.join(render_kv(label, value) for label, value in metrics)}
+    </div>
+  </section>
+"""
+
+
 def has_f06_metrics(row: dict[str, Any]) -> bool:
     return any(row.get(key) not in (None, "") for key in [
         "tflm_compatible",
+        "f06_incompatibility_reason",
+        "incompatibility_reason",
         "tflite_test_precision",
         "tflite_test_recall",
         "tflite_test_f1",
@@ -572,18 +652,23 @@ def has_f06_metrics(row: dict[str, Any]) -> bool:
 def render_f06_section(row: dict[str, Any]) -> str:
     if not has_f06_metrics(row):
         return ""
+    section_class = (
+        "phase-compat-section phase-compat-warning"
+        if falseish(row.get("tflm_compatible")) or first_available(row, "f06_incompatibility_reason", "incompatibility_reason") not in (None, "")
+        else "phase-compat-section"
+    )
     metrics = [
         ("TFLM compatible", row.get("tflm_compatible")),
         ("TFLite precision", row.get("tflite_test_precision")),
         ("TFLite recall", row.get("tflite_test_recall")),
         ("TFLite F1", row.get("tflite_test_f1")),
         ("TFLite PR-AUC", row.get("tflite_test_pr_auc")),
-        ("Incompatibility reason", row.get("incompatibility_reason")),
+        ("Incompatibility reason", first_available(row, "f06_incompatibility_reason", "incompatibility_reason")),
     ]
     return f"""
-  <section class="f06-section">
+  <section class="{section_class}">
     <h6>Phase 6 - TFLite/TFLM</h6>
-    <div class="f06-grid">
+    <div class="phase-compat-grid">
       {''.join(render_kv(label, value) for label, value in metrics)}
     </div>
   </section>
@@ -647,6 +732,7 @@ def render_model_card(row: dict[str, Any], is_best: bool) -> str:
   <div class="kv-grid">
     {''.join(render_kv(label, value) for label, value in secondary)}
   </div>
+  {render_f05_section(row)}
   {render_f06_section(row)}
   {render_criterion_comparison(row)}
   <details>
@@ -844,11 +930,12 @@ def render_html(index: dict[str, Any], rows: list[dict[str, Any]]) -> str:
     .metric {{ background: #fff; border: 1px solid var(--line); border-radius: 7px; padding: 9px; }}
     .metric span {{ display: block; color: var(--muted); font-size: 11px; }}
     .metric strong {{ display: block; font-size: 18px; margin-top: 3px; }}
-    .f06-section {{ background: #f8fbff; border: 1px solid var(--line); border-radius: 7px; margin: 10px 0; padding: 9px; }}
-    .f06-section h6 {{ margin: 0 0 8px; color: #102a43; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }}
-    .f06-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; font-size: 12px; }}
-    .f06-grid span {{ display: block; color: var(--muted); }}
-    .f06-grid strong {{ overflow-wrap: anywhere; }}
+    .phase-compat-section {{ background: #f8fbff; border: 1px solid var(--line); border-radius: 7px; margin: 10px 0; padding: 9px; }}
+    .phase-compat-warning {{ background: #fff8f1; border-color: #e3aa6f; }}
+    .phase-compat-section h6 {{ margin: 0 0 8px; color: #102a43; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }}
+    .phase-compat-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; font-size: 12px; }}
+    .phase-compat-grid span {{ display: block; color: var(--muted); }}
+    .phase-compat-grid strong {{ overflow-wrap: anywhere; }}
     .criterion-analysis {{ margin-top: 24px; }}
     .criterion-details {{ border-top: 1px solid var(--line); padding-top: 9px; }}
     .criterion-note {{ font-size: 12px; line-height: 1.4; }}

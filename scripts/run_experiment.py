@@ -1608,8 +1608,6 @@ def transition_event_names(job: dict[str, Any]) -> list[str]:
     bands = [float(v) for v in (job.get("bands") or [])]
     edges = [0.0, *bands]
     prefixes = [measure]
-    if job["pipeline"] == "events":
-        prefixes.append(f"{measure}_Set_Response")
 
     events: list[str] = []
     for lo, hi in zip(edges[:-1], edges[1:]):

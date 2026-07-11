@@ -19,12 +19,6 @@ EXPORTED_PARAMS_DIR = REPO_ROOT / "exported_params"
 DEFAULT_EXPORTED_MANIFEST = EXPORTED_PARAMS_DIR / "manifest.csv"
 DEFAULT_OUTPUT = REPO_ROOT / "registry" / "model_index.yaml"
 
-SERGIO_REPO_OVERRIDES = {
-    "events": Path.home() / "Desktop" / "STRAST" / "SERGIO" / "mlops4rtedge",
-    "ts": Path.home() / "Desktop" / "STRAST" / "SERGIO" / "mlops4rtedgeTS",
-    "uniEvents": Path.home() / "Desktop" / "STRAST" / "SERGIO" / "mlops4rtedgeUni",
-}
-
 PHASE_DIRS = {
     "f02": "f02_events",
     "f03": "f03_windows",
@@ -124,11 +118,7 @@ def exported_yaml_path(row: dict[str, Any]) -> Path | None:
     return fallback if fallback.exists() else None
 
 
-def repo_path_for_exported_row(row: dict[str, Any], exported: dict[str, Any]) -> str | None:
-    pipeline = str(row.get("pipeline", "")).strip()
-    override = SERGIO_REPO_OVERRIDES.get(pipeline)
-    if override:
-        return normalize_path(override)
+def repo_path_for_exported_row(exported: dict[str, Any]) -> str | None:
     repo_path = str(exported.get("repo_path", "")).strip()
     return normalize_path(repo_path) if repo_path else None
 
@@ -161,7 +151,7 @@ def exported_row_to_index_row(row: dict[str, Any], exported: dict[str, Any], man
         "_source_manifest": manifest_path,
         "status": "COMPLETED",
         "run_id": "exported_params",
-        "repo_path": repo_path_for_exported_row(row, exported),
+        "repo_path": repo_path_for_exported_row(exported),
         "bands": json.dumps(bands),
         "OW": f03_params.get("OW", temporal.get("OW")),
         "PW": f03_params.get("PW", temporal.get("PW")),
