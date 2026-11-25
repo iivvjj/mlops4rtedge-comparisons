@@ -2,9 +2,16 @@ experiment:
   name: compare_ts_vs_events_bands
 
 repos:
+<<<<<<< HEAD
   # ts: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeTS
   events: C:/Users/inesv/Desktop/STRAST/BATH/mlops4rtedge
   # uniEvents: C:/Users/inesv/Desktop/STRAST/mlops4rtedgeUni
+=======
+  # Paths to local clones of the three pipeline repos (relative to this repo's root)
+  ts: ../mlops4rtedgeTS
+  events: ../mlops4rtedge
+  uniEvents: ../mlops4rtedgeUni
+>>>>>>> 5ddc31dcf05bb5106d2f7c94d4e8abfc31900c02
 
 parents:
   #ts_f01: v1_0000

@@ -42,9 +42,16 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_REPOS: dict[str, Path] = {
+<<<<<<< HEAD
     "events": Path("C:/Users/inesv/Desktop/STRAST/BATH/mlops4rtedge"),
    # "ts": Path("C:/Users/inesv/Desktop/STRAST/SERGIO/mlops4rtedgeTS"),
    # "uniEvents": Path("C:/Users/inesv/Desktop/STRAST/SERGIO/mlops4rtedgeUni"),
+=======
+    # Sibling clones next to this repo; override with --repo NAME=PATH
+    "events": REPO_ROOT.parent / "mlops4rtedge",
+    "ts": REPO_ROOT.parent / "mlops4rtedgeTS",
+    "uniEvents": REPO_ROOT.parent / "mlops4rtedgeUni",
+>>>>>>> 5ddc31dcf05bb5106d2f7c94d4e8abfc31900c02
 }
 
 DEFAULT_OUTPUT = REPO_ROOT / "exported_params" / "lineage_export.csv"
@@ -547,4 +554,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+<<<<<<< HEAD
     main()
+=======
+    main()
+>>>>>>> 5ddc31dcf05bb5106d2f7c94d4e8abfc31900c02
